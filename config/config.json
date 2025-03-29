@@ -1,3 +1,6 @@
 {
-    "port":"50051"
+    "port":"50051",
+    "db":{
+        "url":"postgres://myuser:mypassword@localhost:5432/mydatabase?sslmode=disable"
+    }
 }

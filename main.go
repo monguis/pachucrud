@@ -6,18 +6,21 @@ import (
 	"log"
 	"net"
 
-	pb "github.com/monguis/pachuco-proto/user_protos"
+	"github.com/jackc/pgx/v5/pgxpool"
+	throwPb "github.com/monguis/pachuco-proto/dice-throws_protos"
+	userPb "github.com/monguis/pachuco-proto/user_protos"
 	"github.com/monguis/pachucrud/config"
 	"google.golang.org/grpc"
 )
 
 type server struct {
-	pb.UserServer
+	userPb.UserServer
+	throwPb.DiceThrowServer
 }
 
-func (s *server) GetUser(ctx context.Context, req *pb.IdRequest) (*pb.UserResponse, error) {
+func (s *server) GetUser(ctx context.Context, req *userPb.UserIdRequest) (*userPb.UserResponse, error) {
 	log.Printf("Received request from: %s", req.Id)
-	return &pb.UserResponse{Nickname: fmt.Sprintf("Hello, %s!", "Frederers")}, nil
+	return &userPb.UserResponse{Nickname: fmt.Sprintf("Hello, %s!", "Frederers")}, nil
 }
 
 func main() {
@@ -29,9 +32,16 @@ func main() {
 		log.Fatalf("Failed to listen: %v", err)
 	}
 
-	// Create a new gRPC server
+	dbpool, err := pgxpool.New(context.Background(), conf.DB.Url)
+	if err != nil {
+		log.Fatalf("Unable to connect to database: %v\n", err)
+	}
+	defer dbpool.Close()
+	log.Println("DB Connection established")
+
 	grpcServer := grpc.NewServer()
-	pb.RegisterUserServer(grpcServer, &server{})
+	userPb.RegisterUserServer(grpcServer, &server{})
+	throwPb.RegisterDiceThrowServer(grpcServer, &server{})
 
 	log.Println("gRPC server listening on port " + conf.Port)
 	if err := grpcServer.Serve(listener); err != nil {

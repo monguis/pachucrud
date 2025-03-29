@@ -8,7 +8,12 @@ import (
 )
 
 type Config struct {
-	Port string `json:"port"`
+	Port string   `json:"port"`
+	DB   DbConfig `json:"db"`
+}
+
+type DbConfig struct {
+	Url string `json:"url"`
 }
 
 func LoadConfig() Config {
