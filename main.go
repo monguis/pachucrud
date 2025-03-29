@@ -6,18 +6,18 @@ import (
 	"log"
 	"net"
 
+	pb "github.com/monguis/pachuco-proto/user_protos"
 	"github.com/monguis/pachucrud/config"
-	pb "github.com/monguis/pachucrud/proto"
 	"google.golang.org/grpc"
 )
 
 type server struct {
-	pb.UnimplementedGreeterServer
+	pb.UserServer
 }
 
-func (s *server) SayHello(ctx context.Context, req *pb.HelloRequest) (*pb.HelloResponse, error) {
-	log.Printf("Received request from: %s", req.Name)
-	return &pb.HelloResponse{Message: fmt.Sprintf("Hello, %s!", req.Name)}, nil
+func (s *server) GetUser(ctx context.Context, req *pb.IdRequest) (*pb.UserResponse, error) {
+	log.Printf("Received request from: %s", req.Id)
+	return &pb.UserResponse{Nickname: fmt.Sprintf("Hello, %s!", "Frederers")}, nil
 }
 
 func main() {
@@ -31,7 +31,7 @@ func main() {
 
 	// Create a new gRPC server
 	grpcServer := grpc.NewServer()
-	pb.RegisterGreeterServer(grpcServer, &server{})
+	pb.RegisterUserServer(grpcServer, &server{})
 
 	log.Println("gRPC server listening on port " + conf.Port)
 	if err := grpcServer.Serve(listener); err != nil {
