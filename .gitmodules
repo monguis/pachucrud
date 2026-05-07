@@ -1,0 +1,3 @@
+[submodule "src/main/proto-contracts"]
+	path = src/main/proto-contracts
+	url = https://github.com/monguis/pachuco-proto.git
