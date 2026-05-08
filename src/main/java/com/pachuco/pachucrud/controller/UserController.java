@@ -10,12 +10,20 @@ import pachuco_proto.Users.UserResponse;
 
 import java.util.Arrays;
 import java.util.UUID;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 @GrpcService
 public class UserController extends UserGrpc.UserImplBase{
+    Logger logger = LoggerFactory.getLogger(UserController.class);
     public void getUser(UserIdRequest request, StreamObserver<UserResponse> responseObserver) {
 
         String userId = request.getId();
+
+        logger.trace("Log level: TRACE");
+        logger.info("Log level: INFO");
+        logger.debug("Log level: DEBUG");
+        logger.error("Log level: ERROR");
+        logger.warn("Log level: WARN");
 
         UUID uuid = UUID.randomUUID();
 
