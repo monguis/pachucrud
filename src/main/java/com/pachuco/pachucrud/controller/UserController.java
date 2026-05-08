@@ -5,22 +5,27 @@ import org.springframework.grpc.server.service.GrpcService;
 import io.grpc.stub.StreamObserver;
 import pachuco_proto.UserGrpc;
 import pachuco_proto.Users.UserIdRequest;
-// Check your target folder to see if these are inside an outer class or not
 import pachuco_proto.Users.UserRequest;
 import pachuco_proto.Users.UserResponse;
 
-@GrpcService // This tells Spring to host this service on the gRPC port (default 9090)
+import java.util.Arrays;
+import java.util.UUID;
+
+@GrpcService
 public class UserController extends UserGrpc.UserImplBase{
     public void getUser(UserIdRequest request, StreamObserver<UserResponse> responseObserver) {
-        // Accessing the ID from the request
+
         String userId = request.getId();
 
-        // Building the response
+        UUID uuid = UUID.randomUUID();
+
+        String uuidString = uuid.toString();
+
         UserResponse response = UserResponse.newBuilder()
-                .setId(userId)
+                .setId(uuidString)
                 .setNickname("ExampleNick")
                 .setEmail("test@example.com")
-                .setBalance(100.0f)
+                .addAllRoles(Arrays.asList("player", "admin"))
                 .build();
 
         responseObserver.onNext(response);
