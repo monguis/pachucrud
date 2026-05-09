@@ -3,7 +3,7 @@ package com.pachuco.pachucrud.controller;
 import org.springframework.grpc.server.service.GrpcService;
 
 import io.grpc.stub.StreamObserver;
-import pachuco_proto.UserGrpc;
+import pachuco_proto.UserGrpc.UserImplBase;
 import pachuco_proto.Users.UserIdRequest;
 import pachuco_proto.Users.UserRequest;
 import pachuco_proto.Users.UserResponse;
@@ -13,8 +13,10 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 @GrpcService
-public class UserController extends UserGrpc.UserImplBase{
+public class UserController extends UserImplBase{
     Logger logger = LoggerFactory.getLogger(UserController.class);
+
+    @Override
     public void getUser(UserIdRequest request, StreamObserver<UserResponse> responseObserver) {
 
         String userId = request.getId();
