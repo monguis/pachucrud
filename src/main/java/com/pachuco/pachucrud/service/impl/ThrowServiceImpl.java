@@ -17,11 +17,11 @@ public class ThrowServiceImpl implements ThrowService{
         Random random = new Random();
         
         Integer[] diceThrow = new Integer[] {
-            random.nextInt(6) + 1,
-            random.nextInt(6) + 1,
-            random.nextInt(6) + 1,
-            random.nextInt(6) + 1,
-            random.nextInt(6) + 1,
+            random.nextInt(5) + 1,
+            random.nextInt(5) + 1,
+            random.nextInt(5) + 1,
+            random.nextInt(5) + 1,
+            random.nextInt(5) + 1,
         };
         
         ThrowModel resp = new ThrowModel(diceThrow);
