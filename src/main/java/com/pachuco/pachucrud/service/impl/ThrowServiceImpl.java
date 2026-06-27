@@ -7,7 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import com.pachuco.pachucrud.model.ThrowModel;
-import com.pachuco.pachucrud.sevice.ThrowService;
+import com.pachuco.pachucrud.service.ThrowService;
 
 @Service
 public class ThrowServiceImpl implements ThrowService{

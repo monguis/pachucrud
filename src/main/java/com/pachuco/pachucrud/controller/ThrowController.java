@@ -5,7 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.grpc.server.service.GrpcService;
 
 import com.pachuco.pachucrud.model.ThrowModel;
-import com.pachuco.pachucrud.sevice.ThrowService;
+import com.pachuco.pachucrud.service.ThrowService;
 
 import io.grpc.stub.StreamObserver;
 import pachuco_proto.DiceThrowGrpc.DiceThrowImplBase;

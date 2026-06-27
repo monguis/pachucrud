@@ -1,4 +1,4 @@
-package com.pachuco.pachucrud.sevice;
+package com.pachuco.pachucrud.service;
 
 import com.pachuco.pachucrud.model.ThrowModel;
 
