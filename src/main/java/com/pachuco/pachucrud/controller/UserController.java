@@ -4,6 +4,7 @@ import com.pachuco.pachucrud.repository.UserRepository;
 import com.pachuco.pachucrud.repository.entity.UserEntity;
 import com.pachuco.pachucrud.model.UserRole;
 import org.springframework.grpc.server.service.GrpcService;
+import org.springframework.transaction.annotation.Transactional;
 
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
@@ -31,6 +32,7 @@ public class UserController extends UserImplBase {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public void getUser(UserIdRequest request, StreamObserver<UserResponse> responseObserver) {
         String userIdString = request.getId();
 
@@ -62,6 +64,7 @@ public class UserController extends UserImplBase {
 
 
     @Override
+    @Transactional(readOnly = true)
     public void getUserByAuthId(AuthIdRequest request, StreamObserver<UserResponse> responseObserver) {
         String authId = request.getAuthId();
 
@@ -82,7 +85,7 @@ public class UserController extends UserImplBase {
                 .setUsername(user.getUsername())
                 .setNickname(user.getNickname() != null ? user.getNickname() : "")
                 .setEmail(user.getEmail())
-                .addAllRoles(user.getRoles().stream().map(r -> r.name().toLowerCase()).collect(Collectors.toList()))
+                .addAllRoles(user.getRoles().stream().map(r -> r.name().toUpperCase()).collect(Collectors.toList()))
                 .build();
 
         responseObserver.onNext(response);
