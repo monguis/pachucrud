@@ -105,7 +105,7 @@ public class UserController extends UserImplBase {
                 .setId(entity.getId().toString())
                 .setAuthId(entity.getAuthId())
                 .setEmail(entity.getEmail())
-                .addAllRoles(entity.getRoles().stream().map(r -> r.name().toLowerCase()).collect(Collectors.toList()))
+                .addAllRoles(entity.getRoles().stream().map(r -> r.name().toUpperCase()).collect(Collectors.toList()))
                 .build();
 
         responseObserver.onNext(response);
@@ -113,6 +113,7 @@ public class UserController extends UserImplBase {
     }
 
     @Override
+    @Transactional(readOnly = false)
     public void updateUser(UpdateUserRequest request, StreamObserver<UserResponse> responseObserver) {
         UUID id = UUID.fromString(request.getId());
         pachuco_proto.Users.UserRequest payload = request.getUser();
@@ -136,7 +137,7 @@ public class UserController extends UserImplBase {
                 .setUsername(user.getUsername())
                 .setNickname(user.getNickname() != null ? user.getNickname() : "")
                 .setEmail(user.getEmail())
-                .addAllRoles(user.getRoles().stream().map(r -> r.name().toLowerCase()).collect(Collectors.toList()))
+                .addAllRoles(user.getRoles().stream().map(r -> r.name().toUpperCase()).collect(Collectors.toList()))
                 .build();
 
         responseObserver.onNext(response);
