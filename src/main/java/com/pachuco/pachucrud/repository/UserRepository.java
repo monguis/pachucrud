@@ -15,7 +15,7 @@ public interface UserRepository extends JpaRepository<UserEntity, UUID> {
     Optional<UserEntity> findByEmail(String email);
     Optional<UserEntity> findByAuthId(String authId);
     @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Query("UPDATE UserEntity u SET u.nickname = :nickname, u.username = :username, u.email = :email WHERE u.id = :id")
+    @Query("UPDATE UserEntity u SET u.nickname = :nickname, u.username = :username WHERE u.id = :id")
     int updateUserFields(@Param("id") UUID id, @Param("nickname") String nickname, @Param("username") String username, @Param("email") String email);
 
     @Modifying

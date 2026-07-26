@@ -51,7 +51,7 @@ public class UserController extends UserImplBase {
         UserResponse response = UserResponse.newBuilder()
                 .setId(user.getId().toString())
                 .setAuthId(user.getAuthId())
-                .setUsername(user.getUsername())
+                .setUsername(user.getUsername() != null ? user.getUsername() : "")
                 .setNickname(user.getNickname() != null ? user.getNickname() : "")
                 .setEmail(user.getEmail())
                 .addAllRoles(user.getRoles().stream().map(r -> r.name().toLowerCase()).collect(Collectors.toList()))
@@ -82,7 +82,7 @@ public class UserController extends UserImplBase {
         UserResponse response = UserResponse.newBuilder()
                 .setId(user.getId().toString())
                 .setAuthId(user.getAuthId())
-                .setUsername(user.getUsername())
+                .setUsername(user.getUsername() != null ? user.getUsername() : "")
                 .setNickname(user.getNickname() != null ? user.getNickname() : "")
                 .setEmail(user.getEmail())
                 .addAllRoles(user.getRoles().stream().map(r -> r.name().toUpperCase()).collect(Collectors.toList()))
@@ -91,6 +91,7 @@ public class UserController extends UserImplBase {
         responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
+
 
     @Override
     public void addPlayerUser(UserRequest request, StreamObserver<UserResponse> responseObserver) {
@@ -134,7 +135,7 @@ public class UserController extends UserImplBase {
         UserResponse response = UserResponse.newBuilder()
                 .setId(user.getId().toString())
                 .setAuthId(user.getAuthId())
-                .setUsername(user.getUsername())
+                .setUsername(user.getUsername() != null ? user.getUsername() : "")
                 .setNickname(user.getNickname() != null ? user.getNickname() : "")
                 .setEmail(user.getEmail())
                 .addAllRoles(user.getRoles().stream().map(r -> r.name().toUpperCase()).collect(Collectors.toList()))
@@ -145,6 +146,7 @@ public class UserController extends UserImplBase {
     }
 
     @Override
+    @Transactional
     public void deleteUser(UserIdRequest request, StreamObserver<UserResponse> responseObserver) {
         UUID id = UUID.fromString(request.getId());
 
