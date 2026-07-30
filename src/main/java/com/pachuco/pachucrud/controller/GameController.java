@@ -5,12 +5,14 @@ import com.pachuco.pachucrud.repository.GameRepository;
 import com.pachuco.pachucrud.repository.entity.GameEntity;
 import com.pachuco.pachucrud.service.BetService;
 import com.pachuco.pachucrud.service.GameService;
+import com.pachuco.pachucrud.service.GameStageService;
 import com.pachuco.pachucrud.service.RedisService;
 import com.pachuco.pachucrud.service.RollService;
 import com.pachuco.pachucrud.service.model.GameState;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,15 +27,17 @@ public class GameController extends GameServiceGrpc.GameServiceImplBase {
     private static final Logger log = LoggerFactory.getLogger(GameController.class);
 
     private final GameService gameService;
+    private final GameStageService gameStageService;
     private final BetService betService;
     private final RollService rollService;
     private final RedisService redisService;
     private final GameRepository gameRepository;
 
-    public GameController(GameService gameService, BetService betService,
-                          RollService rollService, RedisService redisService,
-                          GameRepository gameRepository) {
+    public GameController(GameService gameService, GameStageService gameStageService,
+                          BetService betService, RollService rollService,
+                          RedisService redisService, GameRepository gameRepository) {
         this.gameService = gameService;
+        this.gameStageService = gameStageService;
         this.betService = betService;
         this.rollService = rollService;
         this.redisService = redisService;
@@ -171,6 +175,13 @@ public class GameController extends GameServiceGrpc.GameServiceImplBase {
                     state.getTurnOrder().stream().map(UUID::toString).toList())
                 .setHouseRoll(state.getHouseRoll() != null ? state.getHouseRoll() : 0);
 
+            builder.addAllWaitingPlayers(
+                state.getWaitingPlayers().stream().map(UUID::toString).toList());
+            builder.addAllReadyPlayers(
+                state.getReadyPlayers().stream().map(UUID::toString).toList());
+            builder.setCurrentTurn(state.getCurrentTurn());
+            builder.setNeedsShuffling(state.isNeedsShuffling());
+
             for (var bet : state.getBets()) {
                 builder.addBets(Games.BetInfo.newBuilder()
                     .setPlayerId(bet.getPlayerId().toString())
@@ -214,6 +225,85 @@ public class GameController extends GameServiceGrpc.GameServiceImplBase {
             respondOk(responseObserver, gameId.toString(), "GAME_DELETED");
         } catch (Exception e) {
             respondError(responseObserver, e);
+        }
+    }
+
+    @Override
+    public void markPlayerReady(Games.MarkPlayerReadyRequest request,
+                                StreamObserver<Games.GameResponse> responseObserver) {
+        try {
+            UUID gameId = UUID.fromString(request.getGameId());
+            UUID playerId = UUID.fromString(request.getPlayerId());
+            gameStageService.markPlayerReady(gameId, playerId);
+
+            respondOk(responseObserver, gameId.toString(), "PLAYER_READY");
+        } catch (Exception e) {
+            respondError(responseObserver, e);
+        }
+    }
+
+    @Override
+    public void advanceToEnoughPlayers(Games.GameIdRequest request,
+                                       StreamObserver<Games.GameResponse> responseObserver) {
+        try {
+            UUID gameId = UUID.fromString(request.getGameId());
+            gameStageService.advanceToEnoughPlayers(gameId);
+
+            respondOk(responseObserver, gameId.toString(), "ADVANCED_TO_ENOUGH_PLAYERS");
+        } catch (Exception e) {
+            respondError(responseObserver, e);
+        }
+    }
+
+    @Override
+    public void advanceToGameStart(Games.GameIdRequest request,
+                                   StreamObserver<Games.GameResponse> responseObserver) {
+        try {
+            UUID gameId = UUID.fromString(request.getGameId());
+            gameStageService.advanceToGameStart(gameId);
+
+            respondOk(responseObserver, gameId.toString(), "ADVANCED_TO_GAME_START");
+        } catch (Exception e) {
+            respondError(responseObserver, e);
+        }
+    }
+
+    @Override
+    public void advanceToNextRound(Games.GameIdRequest request,
+                                   StreamObserver<Games.GameResponse> responseObserver) {
+        try {
+            UUID gameId = UUID.fromString(request.getGameId());
+            gameStageService.advanceToNextRound(gameId);
+
+            respondOk(responseObserver, gameId.toString(), "ADVANCED_TO_NEXT_ROUND");
+        } catch (Exception e) {
+            respondError(responseObserver, e);
+        }
+    }
+
+    @Override
+    public void getCurrentTurn(Games.GameIdRequest request,
+                               StreamObserver<Games.CurrentTurnResponse> responseObserver) {
+        try {
+            UUID gameId = UUID.fromString(request.getGameId());
+            GameState state = gameStageService.getCurrentTurn(gameId);
+
+            int turnIdx = state.getCurrentTurn();
+            List<UUID> order = state.getTurnOrder();
+            String currentPlayerId = turnIdx < order.size() ? order.get(turnIdx).toString() : "";
+
+            var response = Games.CurrentTurnResponse.newBuilder()
+                .setGameId(gameId.toString())
+                .setCurrentTurn(turnIdx)
+                .setCurrentPlayerId(currentPlayerId)
+                .build();
+
+            responseObserver.onNext(response);
+            responseObserver.onCompleted();
+
+        } catch (Exception e) {
+            responseObserver.onError(
+                Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException());
         }
     }
 

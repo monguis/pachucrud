@@ -1,6 +1,7 @@
 package com.pachuco.pachucrud.service.model;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -50,6 +51,12 @@ public class GameState {
     private Integer houseRoll;
     private List<RollInfo> playerRolls = new ArrayList<>();
     private List<UUID> rolledPlayers = new ArrayList<>();
+    private List<UUID> waitingPlayers = new ArrayList<>();
+    private List<UUID> readyPlayers = new ArrayList<>();
+    private int currentTurn;
+    private boolean needsShuffling;
+    private Instant statusSetTime;
+    private List<UUID> playersMarkedForDeletion = new ArrayList<>();
 
     public GameState() {}
 
@@ -75,4 +82,16 @@ public class GameState {
     public void setPlayerRolls(List<RollInfo> playerRolls) { this.playerRolls = playerRolls; }
     public List<UUID> getRolledPlayers() { return rolledPlayers; }
     public void setRolledPlayers(List<UUID> rolledPlayers) { this.rolledPlayers = rolledPlayers; }
+    public List<UUID> getWaitingPlayers() { return waitingPlayers; }
+    public void setWaitingPlayers(List<UUID> waitingPlayers) { this.waitingPlayers = waitingPlayers; }
+    public List<UUID> getReadyPlayers() { return readyPlayers; }
+    public void setReadyPlayers(List<UUID> readyPlayers) { this.readyPlayers = readyPlayers; }
+    public int getCurrentTurn() { return currentTurn; }
+    public void setCurrentTurn(int currentTurn) { this.currentTurn = currentTurn; }
+    public boolean isNeedsShuffling() { return needsShuffling; }
+    public void setNeedsShuffling(boolean needsShuffling) { this.needsShuffling = needsShuffling; }
+    public Instant getStatusSetTime() { return statusSetTime; }
+    public void setStatusSetTime(Instant statusSetTime) { this.statusSetTime = statusSetTime; }
+    public List<UUID> getPlayersMarkedForDeletion() { return playersMarkedForDeletion; }
+    public void setPlayersMarkedForDeletion(List<UUID> playersMarkedForDeletion) { this.playersMarkedForDeletion = playersMarkedForDeletion; }
 }

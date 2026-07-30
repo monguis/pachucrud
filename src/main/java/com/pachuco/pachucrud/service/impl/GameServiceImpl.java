@@ -68,8 +68,11 @@ public class GameServiceImpl implements GameService {
         GameState state = new GameState();
         state.setGameId(game.getId());
         state.setStatus("PENDING");
+        state.setRoundStatus("INIT");
         state.setCurrentRound(0);
-        state.setTurnOrder(Collections.singletonList(creatorId));
+        state.setTurnOrder(new java.util.ArrayList<>());
+        state.getWaitingPlayers().add(creatorId);
+        state.setStatusSetTime(java.time.Instant.now());
         redisService.setGameState(game.getId(), state);
 
         return game;
@@ -93,7 +96,7 @@ public class GameServiceImpl implements GameService {
 
         GameState state = redisService.getGameState(gameId)
             .orElseGet(() -> { eventService.rebuildGameStateInRedis(gameId); return redisService.getGameState(gameId).orElseThrow(); });
-        state.getTurnOrder().add(userId);
+        state.getWaitingPlayers().add(userId);
         redisService.setGameState(gameId, state);
     }
 
@@ -134,7 +137,7 @@ public class GameServiceImpl implements GameService {
         eventService.writeEvent(gameId, EventType.ROUND_STARTED, housePlayerId, data);
 
         state.setCurrentRound(state.getCurrentRound() + 1);
-        state.setRoundStatus("BETTING");
+        state.setRoundStatus("PLAYERS_BET_SETTING");
         state.setHousePlayerId(housePlayerId);
         state.setBetLimit(betLimit);
         state.setHouseRoll(null);

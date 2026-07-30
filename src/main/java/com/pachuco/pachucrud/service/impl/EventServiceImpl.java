@@ -170,17 +170,21 @@ public class EventServiceImpl implements EventService {
                     case GAME_CREATED -> {
                         state.setGameId(event.getGame().getId());
                         state.setStatus("PENDING");
+                        state.setRoundStatus("INIT");
                         state.setCurrentRound(0);
+                        if (event.getActorId() != null) {
+                            state.getWaitingPlayers().add(event.getActorId());
+                        }
                     }
                     case PLAYER_JOINED -> {
-                        List<UUID> order = state.getTurnOrder();
+                        List<UUID> waiting = state.getWaitingPlayers();
                         if (event.getActorId() != null) {
-                            order.add(event.getActorId());
+                            waiting.add(event.getActorId());
                         }
                     }
                     case ROUND_STARTED -> {
                         state.setCurrentRound(state.getCurrentRound() + 1);
-                        state.setRoundStatus("BETTING");
+                        state.setRoundStatus("PLAYERS_BET_SETTING");
                         state.setHouseRoll(null);
                         state.getBets().clear();
                         state.getPlayerRolls().clear();
@@ -207,7 +211,7 @@ public class EventServiceImpl implements EventService {
                         if (val instanceof Number n) {
                             state.setHouseRoll(n.intValue());
                         }
-                        state.setRoundStatus("PLAYER_ROLLING");
+                        state.setRoundStatus("PLAYERS_THROW");
                     }
                     case PLAYER_ROLLED -> {
                         Object val = data.get("diceValue");
@@ -218,6 +222,31 @@ public class EventServiceImpl implements EventService {
                     }
                     case ROUND_COMPLETED -> {
                         state.setRoundStatus("COMPLETED");
+                    }
+                    case PLAYER_READY -> {
+                        if (event.getActorId() != null) {
+                            state.getWaitingPlayers().remove(event.getActorId());
+                            state.getReadyPlayers().add(event.getActorId());
+                        }
+                    }
+                    case GAME_ADVANCED -> {
+                        Object target = data.get("targetStage");
+                        if (target instanceof String s) {
+                            state.setRoundStatus(s);
+                            state.setStatusSetTime(null);
+                            if ("BET_SETTING".equals(s)) {
+                                Object houseId = data.get("housePlayerId");
+                                if (houseId instanceof String hid) {
+                                    state.setHousePlayerId(UUID.fromString(hid));
+                                }
+                            }
+                        }
+                    }
+                    case BET_LIMIT_SET -> {
+                        Object limit = data.get("betLimit");
+                        if (limit instanceof Number n) {
+                            state.setBetLimit(BigDecimal.valueOf(n.doubleValue()));
+                        }
                     }
                     case GAME_COMPLETED -> {
                         state.setStatus("COMPLETED");

@@ -35,7 +35,7 @@ public class BetServiceImpl implements BetService {
         GameState state = redisService.getGameState(gameId)
             .orElseThrow(() -> new IllegalArgumentException("Game state not found in Redis"));
 
-        if (!"BETTING".equals(state.getRoundStatus())) {
+        if (!"PLAYERS_BET_SETTING".equals(state.getRoundStatus())) {
             throw new IllegalStateException("Round is not in betting phase");
         }
 

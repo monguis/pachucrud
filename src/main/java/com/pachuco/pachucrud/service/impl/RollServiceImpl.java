@@ -44,7 +44,7 @@ public class RollServiceImpl implements RollService {
         GameState state = redisService.getGameState(gameId)
             .orElseThrow(() -> new IllegalArgumentException("Game state not found"));
 
-        if (!"PLAYER_ROLLING".equals(state.getRoundStatus()) && !"BETTING".equals(state.getRoundStatus())) {
+        if (!"BANK_THROW".equals(state.getRoundStatus()) && !"PLAYERS_BET_SETTING".equals(state.getRoundStatus())) {
             throw new IllegalStateException("Round is not ready for house roll");
         }
 
@@ -59,7 +59,7 @@ public class RollServiceImpl implements RollService {
         eventService.writeEvent(gameId, EventType.HOUSE_ROLLED, housePlayerId, data);
 
         state.setHouseRoll(diceValue);
-        state.setRoundStatus("PLAYER_ROLLING");
+        state.setRoundStatus("PLAYERS_THROW");
         redisService.setGameState(gameId, state);
 
         return state;
@@ -71,7 +71,7 @@ public class RollServiceImpl implements RollService {
         GameState state = redisService.getGameState(gameId)
             .orElseThrow(() -> new IllegalArgumentException("Game state not found"));
 
-        if (!"PLAYER_ROLLING".equals(state.getRoundStatus())) {
+        if (!"PLAYERS_THROW".equals(state.getRoundStatus())) {
             throw new IllegalStateException("Round is not in player rolling phase");
         }
 
