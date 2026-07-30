@@ -205,6 +205,18 @@ public class GameController extends GameServiceGrpc.GameServiceImplBase {
         }
     }
 
+    @Override
+    public void deleteGame(Games.GameIdRequest request,
+                           StreamObserver<Games.GameResponse> responseObserver) {
+        try {
+            UUID gameId = UUID.fromString(request.getGameId());
+            gameService.deleteGame(gameId);
+            respondOk(responseObserver, gameId.toString(), "GAME_DELETED");
+        } catch (Exception e) {
+            respondError(responseObserver, e);
+        }
+    }
+
     private void respondOk(StreamObserver<Games.GameResponse> observer,
                            String id, String message) {
         var response = Games.GameResponse.newBuilder()

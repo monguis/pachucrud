@@ -14,4 +14,5 @@ public interface GameService {
     List<GameEntity> getAllGames();
     Optional<GameState> getGameState(UUID gameId);
     void completeGame(UUID gameId);
+    void deleteGame(UUID gameId);
 }

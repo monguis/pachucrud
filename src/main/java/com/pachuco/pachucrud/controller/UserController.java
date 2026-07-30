@@ -216,7 +216,7 @@ public class UserController extends UserGrpc.UserImplBase {
             .setNickname(user.getNickname() != null ? user.getNickname() : "")
             .setEmail(user.getEmail())
             .addAllRoles(user.getRoles().stream()
-                .map(r -> r.name().toLowerCase()).collect(Collectors.toList()))
+                .map(r -> r.name()).collect(Collectors.toList()))
             .build();
     }
 }

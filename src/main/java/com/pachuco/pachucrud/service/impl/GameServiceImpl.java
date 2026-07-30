@@ -10,6 +10,8 @@ import com.pachuco.pachucrud.service.EventService;
 import com.pachuco.pachucrud.service.GameService;
 import com.pachuco.pachucrud.service.RedisService;
 import com.pachuco.pachucrud.service.model.GameState;
+import com.pachuco.pachucrud.repository.EventRepository;
+import com.pachuco.pachucrud.repository.TransactionRepository;
 import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.HashMap;
@@ -31,15 +33,21 @@ public class GameServiceImpl implements GameService {
     private final UserRepository userRepository;
     private final EventService eventService;
     private final RedisService redisService;
+    private final EventRepository eventRepository;
+    private final TransactionRepository transactionRepository;
 
     public GameServiceImpl(GameRepository gameRepository,
                            UserRepository userRepository,
                            EventService eventService,
-                           RedisService redisService) {
+                           RedisService redisService,
+                           EventRepository eventRepository,
+                           TransactionRepository transactionRepository) {
         this.gameRepository = gameRepository;
         this.userRepository = userRepository;
         this.eventService = eventService;
         this.redisService = redisService;
+        this.eventRepository = eventRepository;
+        this.transactionRepository = transactionRepository;
     }
 
     @Override
@@ -166,5 +174,17 @@ public class GameServiceImpl implements GameService {
         GameState state = redisService.getGameState(gameId).orElse(new GameState());
         state.setStatus("COMPLETED");
         redisService.setGameState(gameId, state);
+    }
+
+    @Override
+    @Transactional
+    public void deleteGame(UUID gameId) {
+        gameRepository.findById(gameId)
+            .orElseThrow(() -> new IllegalArgumentException("Game not found: " + gameId));
+
+        redisService.deleteGameState(gameId);
+        transactionRepository.deleteByGameId(gameId);
+        eventRepository.deleteByGameId(gameId);
+        gameRepository.deleteById(gameId);
     }
 }
