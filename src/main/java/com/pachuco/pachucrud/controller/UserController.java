@@ -1,171 +1,222 @@
 package com.pachuco.pachucrud.controller;
 
+import com.pachuco.pachucrud.model.UserRole;
 import com.pachuco.pachucrud.repository.UserRepository;
 import com.pachuco.pachucrud.repository.entity.UserEntity;
-import com.pachuco.pachucrud.model.UserRole;
-import org.springframework.grpc.server.service.GrpcService;
-import org.springframework.transaction.annotation.Transactional;
-
+import com.pachuco.pachucrud.service.EventService;
+import com.pachuco.pachucrud.service.RedisService;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
-import pachuco_proto.UserGrpc.UserImplBase;
-import pachuco_proto.Users.AuthIdRequest;
-import pachuco_proto.Users.UpdateUserRequest;
-import pachuco_proto.Users.UserIdRequest;
-import pachuco_proto.Users.UserRequest;
-import pachuco_proto.Users.UserResponse;
-
+import java.math.BigDecimal;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.grpc.server.service.GrpcService;
+import org.springframework.transaction.annotation.Transactional;
+import pachuco_proto.UserGrpc;
+import pachuco_proto.Users;
 
 @GrpcService
-public class UserController extends UserImplBase {
-    Logger logger = LoggerFactory.getLogger(UserController.class);
+public class UserController extends UserGrpc.UserImplBase {
+
+    private static final Logger log = LoggerFactory.getLogger(UserController.class);
+
     private final UserRepository userRepository;
+    private final RedisService redisService;
+    private final EventService eventService;
 
-    public UserController(UserRepository userRepository) {
+    public UserController(UserRepository userRepository,
+                          RedisService redisService,
+                          EventService eventService) {
         this.userRepository = userRepository;
+        this.redisService = redisService;
+        this.eventService = eventService;
     }
 
     @Override
     @Transactional(readOnly = true)
-    public void getUser(UserIdRequest request, StreamObserver<UserResponse> responseObserver) {
-        String userIdString = request.getId();
+    public void getUser(Users.UserIdRequest request,
+                        StreamObserver<Users.UserResponse> responseObserver) {
+        try {
+            UUID userId = UUID.fromString(request.getId());
+            UserEntity user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
 
-        UUID userId = UUID.fromString(userIdString);
-        UserEntity user = userRepository.findById(userId).orElse(null);
-
-        if (user == null) {
+            responseObserver.onNext(toResponse(user));
+            responseObserver.onCompleted();
+        } catch (Exception e) {
             responseObserver.onError(
-                Status.NOT_FOUND
-                    .withDescription("User not found for userId: " + userIdString)
-                    .asRuntimeException()
-            );
-            return;
+                Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException());
         }
-
-        UserResponse response = UserResponse.newBuilder()
-                .setId(user.getId().toString())
-                .setAuthId(user.getAuthId())
-                .setUsername(user.getUsername() != null ? user.getUsername() : "")
-                .setNickname(user.getNickname() != null ? user.getNickname() : "")
-                .setEmail(user.getEmail())
-                .addAllRoles(user.getRoles().stream().map(r -> r.name().toLowerCase()).collect(Collectors.toList()))
-                .build();
-
-        responseObserver.onNext(response);
-        responseObserver.onCompleted();
-
     }
-
 
     @Override
     @Transactional(readOnly = true)
-    public void getUserByAuthId(AuthIdRequest request, StreamObserver<UserResponse> responseObserver) {
-        String authId = request.getAuthId();
+    public void getUserByAuthId(Users.AuthIdRequest request,
+                                StreamObserver<Users.UserResponse> responseObserver) {
+        try {
+            UserEntity user = userRepository.findByAuthId(request.getAuthId())
+                .orElseThrow(() -> new IllegalArgumentException("User not found for authId"));
 
-        UserEntity user = userRepository.findByAuthId(authId).orElse(null);
-
-        if (user == null) {
+            responseObserver.onNext(toResponse(user));
+            responseObserver.onCompleted();
+        } catch (Exception e) {
             responseObserver.onError(
-                Status.NOT_FOUND
-                    .withDescription("User not found for authId: " + authId)
-                    .asRuntimeException()
-            );
-            return;
+                Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException());
         }
-
-        UserResponse response = UserResponse.newBuilder()
-                .setId(user.getId().toString())
-                .setAuthId(user.getAuthId())
-                .setUsername(user.getUsername() != null ? user.getUsername() : "")
-                .setNickname(user.getNickname() != null ? user.getNickname() : "")
-                .setEmail(user.getEmail())
-                .addAllRoles(user.getRoles().stream().map(r -> r.name().toUpperCase()).collect(Collectors.toList()))
-                .build();
-
-        responseObserver.onNext(response);
-        responseObserver.onCompleted();
-    }
-
-
-    @Override
-    public void addPlayerUser(UserRequest request, StreamObserver<UserResponse> responseObserver) {
-        UserEntity entity = new UserEntity();
-        entity.setAuthId(request.getAuthId());
-        entity.setEmail(request.getEmail());
-        entity.setRoles(List.of(UserRole.PLAYER));
-
-        entity = userRepository.save(entity);
-
-        UserResponse response = UserResponse.newBuilder()
-                .setId(entity.getId().toString())
-                .setAuthId(entity.getAuthId())
-                .setEmail(entity.getEmail())
-                .addAllRoles(entity.getRoles().stream().map(r -> r.name().toUpperCase()).collect(Collectors.toList()))
-                .build();
-
-        responseObserver.onNext(response);
-        responseObserver.onCompleted();
     }
 
     @Override
-    @Transactional(readOnly = false)
-    public void updateUser(UpdateUserRequest request, StreamObserver<UserResponse> responseObserver) {
-        UUID id = UUID.fromString(request.getId());
-        pachuco_proto.Users.UserRequest payload = request.getUser();
+    @Transactional(readOnly = true)
+    public void getUserByEmail(Users.EmailRequest request,
+                               StreamObserver<Users.UserResponse> responseObserver) {
+        try {
+            UserEntity user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new IllegalArgumentException("User not found for email"));
 
-        int updated = userRepository.updateUserFields(id, payload.getNickname(), payload.getUsername(), payload.getEmail());
-
-        if (updated == 0) {
+            responseObserver.onNext(toResponse(user));
+            responseObserver.onCompleted();
+        } catch (Exception e) {
             responseObserver.onError(
-                Status.NOT_FOUND
-                    .withDescription("User not found for id: " + id)
-                    .asRuntimeException()
-            );
-            return;
+                Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException());
         }
-
-        UserEntity user = userRepository.findById(id).orElseThrow();
-
-        UserResponse response = UserResponse.newBuilder()
-                .setId(user.getId().toString())
-                .setAuthId(user.getAuthId())
-                .setUsername(user.getUsername() != null ? user.getUsername() : "")
-                .setNickname(user.getNickname() != null ? user.getNickname() : "")
-                .setEmail(user.getEmail())
-                .addAllRoles(user.getRoles().stream().map(r -> r.name().toUpperCase()).collect(Collectors.toList()))
-                .build();
-
-        responseObserver.onNext(response);
-        responseObserver.onCompleted();
     }
 
     @Override
     @Transactional
-    public void deleteUser(UserIdRequest request, StreamObserver<UserResponse> responseObserver) {
-        UUID id = UUID.fromString(request.getId());
+    public void addPlayerUser(Users.UserRequest request,
+                              StreamObserver<Users.UserResponse> responseObserver) {
+        try {
+            UserEntity entity = new UserEntity();
+            entity.setAuthId(request.getAuthId());
+            entity.setEmail(request.getEmail());
+            entity.setRoles(List.of(UserRole.PLAYER));
+            entity = userRepository.save(entity);
 
-        int deleted = userRepository.deleteUserById(id);
+            redisService.setBalance(entity.getId(), BigDecimal.ZERO);
 
-        if (deleted == 0) {
+            responseObserver.onNext(toResponse(entity));
+            responseObserver.onCompleted();
+        } catch (Exception e) {
             responseObserver.onError(
-                Status.NOT_FOUND
-                    .withDescription("User not found for id: " + id)
-                    .asRuntimeException()
-            );
-            return;
+                Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
         }
+    }
 
-        UserResponse response = UserResponse.newBuilder()
-                .setId(id.toString())
-                .build();
+    @Override
+    @Transactional
+    public void updateUser(Users.UpdateUserRequest request,
+                           StreamObserver<Users.UserResponse> responseObserver) {
+        try {
+            UUID id = UUID.fromString(request.getId());
+            Users.UserRequest payload = request.getUser();
 
-        responseObserver.onNext(response);
-        responseObserver.onCompleted();
+            userRepository.findByEmail(payload.getEmail())
+                .filter(u -> !u.getId().equals(id))
+                .ifPresent(u -> { throw new IllegalArgumentException("Email already in use"); });
+
+            UserEntity user = userRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+            if (!payload.getNickname().isEmpty()) user.setNickname(payload.getNickname());
+            if (!payload.getUsername().isEmpty()) user.setUsername(payload.getUsername());
+            if (!payload.getEmail().isEmpty()) user.setEmail(payload.getEmail());
+            userRepository.save(user);
+
+            responseObserver.onNext(toResponse(user));
+            responseObserver.onCompleted();
+        } catch (Exception e) {
+            responseObserver.onError(
+                Status.INVALID_ARGUMENT.withDescription(e.getMessage()).asRuntimeException());
+        }
+    }
+
+    @Override
+    @Transactional
+    public void deleteUser(Users.UserIdRequest request,
+                           StreamObserver<Users.UserResponse> responseObserver) {
+        try {
+            UUID id = UUID.fromString(request.getId());
+            userRepository.deleteById(id);
+
+            responseObserver.onNext(Users.UserResponse.newBuilder()
+                .setId(id.toString()).build());
+            responseObserver.onCompleted();
+        } catch (Exception e) {
+            responseObserver.onError(
+                Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException());
+        }
+    }
+
+    @Override
+    public void getBalance(Users.UserIdRequest request,
+                           StreamObserver<Users.BalanceResponse> responseObserver) {
+        try {
+            UUID userId = UUID.fromString(request.getId());
+            BigDecimal balance = redisService.getBalance(userId).orElseGet(() -> {
+                BigDecimal computed = eventService.computeUserBalance(userId);
+                redisService.setBalance(userId, computed);
+                return computed;
+            });
+
+            responseObserver.onNext(Users.BalanceResponse.newBuilder()
+                .setUserId(userId.toString())
+                .setBalance(balance.doubleValue())
+                .build());
+            responseObserver.onCompleted();
+        } catch (Exception e) {
+            responseObserver.onError(
+                Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+        }
+    }
+
+    @Override
+    @Transactional
+    public void deposit(Users.DepositRequest request,
+                        StreamObserver<Users.BalanceResponse> responseObserver) {
+        try {
+            UUID userId = UUID.fromString(request.getUserId());
+            BigDecimal amount = BigDecimal.valueOf(request.getAmount());
+
+            if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new IllegalArgumentException("Deposit amount must be positive");
+            }
+
+            Map<String, Object> eventData = new HashMap<>();
+            eventData.put("amount", amount);
+            eventData.put("type", "deposit");
+
+            eventService.writeEvent(null, com.pachuco.pachucrud.model.EventType.DEPOSIT,
+                userId, eventData);
+
+            BigDecimal current = redisService.getBalance(userId).orElse(BigDecimal.ZERO);
+            BigDecimal newBalance = current.add(amount);
+            redisService.setBalance(userId, newBalance);
+
+            responseObserver.onNext(Users.BalanceResponse.newBuilder()
+                .setUserId(userId.toString())
+                .setBalance(newBalance.doubleValue())
+                .build());
+            responseObserver.onCompleted();
+        } catch (Exception e) {
+            responseObserver.onError(
+                Status.INVALID_ARGUMENT.withDescription(e.getMessage()).asRuntimeException());
+        }
+    }
+
+    private Users.UserResponse toResponse(UserEntity user) {
+        return Users.UserResponse.newBuilder()
+            .setId(user.getId().toString())
+            .setAuthId(user.getAuthId())
+            .setUsername(user.getUsername() != null ? user.getUsername() : "")
+            .setNickname(user.getNickname() != null ? user.getNickname() : "")
+            .setEmail(user.getEmail())
+            .addAllRoles(user.getRoles().stream()
+                .map(r -> r.name().toLowerCase()).collect(Collectors.toList()))
+            .build();
     }
 }
