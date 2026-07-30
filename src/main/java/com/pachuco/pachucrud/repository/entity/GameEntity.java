@@ -14,6 +14,8 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import com.pachuco.pachucrud.model.GameStatus;
 import lombok.Data;
 
@@ -43,6 +45,7 @@ public class GameEntity {
     @Column(name = "completed_at")
     private Instant completedAt;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private String metadata;
 }

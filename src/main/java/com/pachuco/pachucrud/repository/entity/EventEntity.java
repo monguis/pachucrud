@@ -15,6 +15,8 @@ import jakarta.persistence.UniqueConstraint;
 import java.time.Instant;
 import java.util.UUID;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import com.pachuco.pachucrud.model.EventType;
 import lombok.Data;
 
@@ -43,6 +45,7 @@ public class EventEntity {
     @Column(name = "actor_id")
     private UUID actorId;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb", nullable = false)
     private String data;
 
