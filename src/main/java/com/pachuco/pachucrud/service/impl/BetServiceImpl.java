@@ -55,8 +55,11 @@ public class BetServiceImpl implements BetService {
             throw new IllegalArgumentException("Bet amount must be positive");
         }
 
-        BigDecimal playerBalance = redisService.getBalance(playerId)
-            .orElseThrow(() -> new IllegalStateException("Player balance not available"));
+        BigDecimal playerBalance = redisService.getBalance(playerId).orElseGet(() -> {
+            BigDecimal computed = eventService.computeUserBalance(playerId);
+            redisService.setBalance(playerId, computed);
+            return computed;
+        });
 
         if (playerBalance.compareTo(amount) < 0) {
             throw new IllegalStateException("Insufficient balance: have " + playerBalance + ", need " + amount);
@@ -117,8 +120,16 @@ public class BetServiceImpl implements BetService {
             gameId, EventType.PLAYER_ROLLED, playerId, data,
             playerId, txType, netDelta, state.getCurrentRound());
 
-        BigDecimal playerBalance = redisService.getBalance(playerId).orElse(BigDecimal.ZERO);
-        BigDecimal houseBalance = redisService.getBalance(state.getHousePlayerId()).orElse(BigDecimal.ZERO);
+        BigDecimal playerBalance = redisService.getBalance(playerId).orElseGet(() -> {
+            BigDecimal computed = eventService.computeUserBalance(playerId);
+            redisService.setBalance(playerId, computed);
+            return computed;
+        });
+        BigDecimal houseBalance = redisService.getBalance(state.getHousePlayerId()).orElseGet(() -> {
+            BigDecimal computed = eventService.computeUserBalance(state.getHousePlayerId());
+            redisService.setBalance(state.getHousePlayerId(), computed);
+            return computed;
+        });
 
         switch (outcome) {
             case "win" -> {

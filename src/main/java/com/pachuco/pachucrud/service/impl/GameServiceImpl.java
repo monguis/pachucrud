@@ -150,8 +150,11 @@ public class GameServiceImpl implements GameService {
             throw new IllegalStateException("Need at least " + minPlayers + " players to start a round");
         }
 
-        BigDecimal houseBalance = redisService.getBalance(housePlayerId)
-            .orElseThrow(() -> new IllegalStateException("House balance not available"));
+        BigDecimal houseBalance = redisService.getBalance(housePlayerId).orElseGet(() -> {
+            BigDecimal computed = eventService.computeUserBalance(housePlayerId);
+            redisService.setBalance(housePlayerId, computed);
+            return computed;
+        });
 
         int regularPlayers = numPlayers - 1;
         BigDecimal required = betLimit.multiply(BigDecimal.valueOf(2)).multiply(BigDecimal.valueOf(regularPlayers));
