@@ -35,10 +35,10 @@ public class EventEntity {
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "game_id", nullable = false)
+    @JoinColumn(name = "game_id", nullable = true)
     private GameEntity game;
 
-    @Column(name = "sequence_number", nullable = false)
+    @Column(name = "sequence_number")
     private Integer sequenceNumber;
 
     @Enumerated(EnumType.STRING)

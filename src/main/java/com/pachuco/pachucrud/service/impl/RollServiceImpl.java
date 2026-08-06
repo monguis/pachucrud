@@ -73,6 +73,7 @@ public class RollServiceImpl implements RollService {
 
         state.setHouseDice(model.getDiceList());
         state.setRoundStatus("PLAYERS_THROW");
+        state.setCurrentTurn(nextBettorIndex(state, 1));
         redisService.setGameState(gameId, state);
 
         return new RollResult(state, model, "house_rolled", false);
@@ -100,6 +101,11 @@ public class RollServiceImpl implements RollService {
             throw new IllegalStateException("House must roll first");
         }
 
+        int playerIndex = state.getTurnOrder().indexOf(playerId);
+        if (playerIndex < 0 || playerIndex != state.getCurrentTurn()) {
+            throw new IllegalStateException("Not this player's turn to roll");
+        }
+
         boolean hasBet = state.getBets().stream()
             .anyMatch(b -> b.getPlayerId().equals(playerId));
         if (!hasBet) {
@@ -113,14 +119,36 @@ public class RollServiceImpl implements RollService {
 
         GameState freshState = redisService.getGameState(gameId).orElseThrow();
 
-        int regularPlayers = freshState.getTurnOrder().size() - 1;
-        if (regularPlayers > 0 && freshState.getRolledPlayers().size() >= regularPlayers
+        freshState.setCurrentTurn(nextBettorIndex(freshState, freshState.getCurrentTurn() + 1));
+
+        long bettors = freshState.getBets().stream()
+            .map(GameState.BetInfo::getPlayerId).distinct().count();
+        if (bettors > 0 && freshState.getRolledPlayers().size() >= bettors
                 && !"COMPLETED".equals(freshState.getRoundStatus())) {
             gameStageService.advanceToRoundCompleted(gameId);
             freshState = redisService.getGameState(gameId).orElseThrow();
+        } else {
+            redisService.setGameState(gameId, freshState);
         }
 
         return new RollResult(freshState, playerModel, outcome, outcome.startsWith("win"));
+    }
+
+    private int nextBettorIndex(GameState state, int fromIndex) {
+        List<UUID> order = state.getTurnOrder();
+        for (int i = Math.max(1, fromIndex); i < order.size(); i++) {
+            UUID player = order.get(i);
+            if (player.equals(state.getHousePlayerId())) {
+                continue;
+            }
+            boolean hasBet = state.getBets().stream()
+                .anyMatch(b -> b.getPlayerId().equals(player));
+            boolean alreadyRolled = state.getRolledPlayers().contains(player);
+            if (hasBet && !alreadyRolled) {
+                return i;
+            }
+        }
+        return order.size();
     }
 
     private Integer[] toArray(List<Integer> dice) {

@@ -91,11 +91,15 @@ public class UserController extends UserGrpc.UserImplBase {
     public void addPlayerUser(Users.UserRequest request,
                               StreamObserver<Users.UserResponse> responseObserver) {
         try {
-            UserEntity entity = new UserEntity();
-            entity.setAuthId(request.getAuthId());
-            entity.setEmail(request.getEmail());
-            entity.setRoles(List.of(UserRole.PLAYER));
-            entity = userRepository.save(entity);
+            UserEntity entity = userRepository.findByAuthId(request.getAuthId())
+                .orElseGet(() -> {
+                    UserEntity created = new UserEntity();
+                    created.setAuthId(request.getAuthId());
+                    created.setEmail(request.getEmail());
+                    created.setRoles(List.of(UserRole.PLAYER));
+                    return created;
+                });
+            entity = userRepository.saveAndFlush(entity);
 
             redisService.setBalance(entity.getId(), BigDecimal.ZERO);
 

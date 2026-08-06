@@ -60,10 +60,13 @@ public class EventServiceImpl implements EventService {
     @Transactional
     public EventEntity writeEvent(UUID gameId, EventType eventType, UUID actorId, Map<String, Object> data,
                                   Integer roundNumber) {
-        GameEntity game = gameRepository.findById(gameId)
-            .orElseThrow(() -> new IllegalArgumentException("Game not found: " + gameId));
-
-        int nextSeq = eventRepository.getMaxSequenceNumber(gameId) + 1;
+        Integer nextSeq = null;
+        GameEntity game = null;
+        if (gameId != null) {
+            game = gameRepository.findById(gameId)
+                .orElseThrow(() -> new IllegalArgumentException("Game not found: " + gameId));
+            nextSeq = eventRepository.getMaxSequenceNumber(gameId) + 1;
+        }
 
         String dataJson;
         try {
@@ -81,7 +84,9 @@ public class EventServiceImpl implements EventService {
         event.setData(dataJson);
         event = eventRepository.save(event);
 
-        redisService.setLastSequence(gameId, nextSeq);
+        if (gameId != null && nextSeq != null) {
+            redisService.setLastSequence(gameId, nextSeq);
+        }
 
         return event;
     }

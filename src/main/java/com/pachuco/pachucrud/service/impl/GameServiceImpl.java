@@ -180,6 +180,7 @@ public class GameServiceImpl implements GameService {
         state.getBets().clear();
         state.getPlayerRolls().clear();
         state.getRolledPlayers().clear();
+        state.setCurrentTurn(0);
         redisService.setGameState(gameId, state);
     }
 
