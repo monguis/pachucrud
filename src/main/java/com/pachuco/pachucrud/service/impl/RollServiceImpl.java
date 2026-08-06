@@ -4,10 +4,13 @@ import com.pachuco.pachucrud.model.EventType;
 import com.pachuco.pachucrud.model.ThrowModel;
 import com.pachuco.pachucrud.service.BetService;
 import com.pachuco.pachucrud.service.EventService;
+import com.pachuco.pachucrud.service.GameStageService;
 import com.pachuco.pachucrud.service.RedisService;
 import com.pachuco.pachucrud.service.RollService;
 import com.pachuco.pachucrud.service.model.GameState;
+import com.pachuco.pachucrud.service.model.RollResult;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
@@ -25,26 +28,35 @@ public class RollServiceImpl implements RollService {
     private final EventService eventService;
     private final RedisService redisService;
     private final BetService betService;
+    private final GameStageService gameStageService;
 
     public RollServiceImpl(EventService eventService, RedisService redisService,
-                           BetService betService) {
+                           BetService betService, GameStageService gameStageService) {
         this.eventService = eventService;
         this.redisService = redisService;
         this.betService = betService;
+        this.gameStageService = gameStageService;
     }
 
     @Override
-    public int rollD6() {
-        return RANDOM.nextInt(6) + 1;
+    public ThrowModel roll5D6() {
+        Integer[] dice = new Integer[] {
+            RANDOM.nextInt(6) + 1,
+            RANDOM.nextInt(6) + 1,
+            RANDOM.nextInt(6) + 1,
+            RANDOM.nextInt(6) + 1,
+            RANDOM.nextInt(6) + 1,
+        };
+        return new ThrowModel(dice);
     }
 
     @Override
     @Transactional
-    public GameState houseRoll(UUID gameId, UUID housePlayerId) {
+    public RollResult houseRoll(UUID gameId, UUID housePlayerId) {
         GameState state = redisService.getGameState(gameId)
             .orElseThrow(() -> new IllegalArgumentException("Game state not found"));
 
-        if (!"BANK_THROW".equals(state.getRoundStatus()) && !"PLAYERS_BET_SETTING".equals(state.getRoundStatus())) {
+        if (!"BANK_THROW".equals(state.getRoundStatus())) {
             throw new IllegalStateException("Round is not ready for house roll");
         }
 
@@ -52,22 +64,23 @@ public class RollServiceImpl implements RollService {
             throw new IllegalStateException("Only the house player can roll as house");
         }
 
-        int diceValue = rollD6();
+        ThrowModel model = roll5D6();
 
         Map<String, Object> data = new HashMap<>();
-        data.put("diceValue", diceValue);
+        data.put("dice", model.getDiceList());
+        data.put("combo", model.getComboName());
         eventService.writeEvent(gameId, EventType.HOUSE_ROLLED, housePlayerId, data);
 
-        state.setHouseRoll(diceValue);
+        state.setHouseDice(model.getDiceList());
         state.setRoundStatus("PLAYERS_THROW");
         redisService.setGameState(gameId, state);
 
-        return state;
+        return new RollResult(state, model, "house_rolled", false);
     }
 
     @Override
     @Transactional
-    public GameState playerRoll(UUID gameId, UUID playerId) {
+    public RollResult playerRoll(UUID gameId, UUID playerId) {
         GameState state = redisService.getGameState(gameId)
             .orElseThrow(() -> new IllegalArgumentException("Game state not found"));
 
@@ -83,7 +96,7 @@ public class RollServiceImpl implements RollService {
             throw new IllegalStateException("Player has already rolled this round");
         }
 
-        if (state.getHouseRoll() == null) {
+        if (state.getHouseDice().isEmpty()) {
             throw new IllegalStateException("House must roll first");
         }
 
@@ -93,73 +106,24 @@ public class RollServiceImpl implements RollService {
             throw new IllegalStateException("Player must place a bet before rolling");
         }
 
-        int diceValue = rollD6();
+        ThrowModel playerModel = roll5D6();
+        ThrowModel houseModel = new ThrowModel(toArray(state.getHouseDice()));
 
-        betService.settleBet(gameId, playerId, state.getHouseRoll(), diceValue);
+        String outcome = betService.settleBet(gameId, playerId, houseModel, playerModel);
 
         GameState freshState = redisService.getGameState(gameId).orElseThrow();
 
-        boolean allBettingPlayersRolled = freshState.getBets().stream()
-            .allMatch(b -> freshState.getRolledPlayers().contains(b.getPlayerId()));
-        if (allBettingPlayersRolled) {
-            Map<String, Object> roundData = new HashMap<>();
-            roundData.put("roundNumber", freshState.getCurrentRound());
-
-            UUID currentHouse = freshState.getHousePlayerId();
-            UUID nextToRoll = findNextToRoll(freshState.getTurnOrder(), currentHouse);
-            boolean houseChanges = nextToRoll != null
-                && freshState.getPlayerRolls().stream()
-                    .anyMatch(r -> r.getPlayerId().equals(nextToRoll)
-                                && r.getDiceValue() > freshState.getHouseRoll());
-
-            if (houseChanges) {
-                shiftTurnOrder(freshState, nextToRoll);
-            }
-
-            eventService.writeEvent(gameId, EventType.ROUND_COMPLETED, null, roundData);
-
-            freshState.setRoundStatus("COMPLETED");
-            redisService.setGameState(gameId, freshState);
+        int regularPlayers = freshState.getTurnOrder().size() - 1;
+        if (regularPlayers > 0 && freshState.getRolledPlayers().size() >= regularPlayers
+                && !"COMPLETED".equals(freshState.getRoundStatus())) {
+            gameStageService.advanceToRoundCompleted(gameId);
+            freshState = redisService.getGameState(gameId).orElseThrow();
         }
 
-        return freshState;
+        return new RollResult(freshState, playerModel, outcome, outcome.startsWith("win"));
     }
 
-    @Override
-    public ThrowModel roll5D6() {
-        Integer[] diceThrow = new Integer[] {
-            RANDOM.nextInt(6) + 1,
-            RANDOM.nextInt(6) + 1,
-            RANDOM.nextInt(6) + 1,
-            RANDOM.nextInt(6) + 1,
-            RANDOM.nextInt(6) + 1,
-        };
-        return new ThrowModel(diceThrow);
-    }
-
-    private UUID findNextToRoll(java.util.List<UUID> turnOrder, UUID houseId) {
-        int houseIdx = turnOrder.indexOf(houseId);
-        if (houseIdx < 0 || houseIdx >= turnOrder.size() - 1) return null;
-        return turnOrder.get(houseIdx + 1);
-    }
-
-    private void shiftTurnOrder(GameState state, UUID newHouseId) {
-        java.util.List<UUID> order = state.getTurnOrder();
-        UUID oldHouse = state.getHousePlayerId();
-        state.setHousePlayerId(newHouseId);
-
-        java.util.List<UUID> rotated = new java.util.ArrayList<>();
-        int newHouseIdx = order.indexOf(newHouseId);
-        for (int i = newHouseIdx; i < order.size(); i++) {
-            rotated.add(order.get(i));
-        }
-        rotated.add(oldHouse);
-        for (int i = 0; i < newHouseIdx; i++) {
-            UUID p = order.get(i);
-            if (!p.equals(oldHouse)) {
-                rotated.add(p);
-            }
-        }
-        state.setTurnOrder(rotated);
+    private Integer[] toArray(List<Integer> dice) {
+        return dice.toArray(new Integer[0]);
     }
 }

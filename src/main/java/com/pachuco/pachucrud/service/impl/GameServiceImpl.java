@@ -2,7 +2,9 @@ package com.pachuco.pachucrud.service.impl;
 
 import com.pachuco.pachucrud.model.EventType;
 import com.pachuco.pachucrud.model.GameStatus;
+import com.pachuco.pachucrud.repository.EventRepository;
 import com.pachuco.pachucrud.repository.GameRepository;
+import com.pachuco.pachucrud.repository.TransactionRepository;
 import com.pachuco.pachucrud.repository.UserRepository;
 import com.pachuco.pachucrud.repository.entity.GameEntity;
 import com.pachuco.pachucrud.repository.entity.UserEntity;
@@ -10,10 +12,9 @@ import com.pachuco.pachucrud.service.EventService;
 import com.pachuco.pachucrud.service.GameService;
 import com.pachuco.pachucrud.service.RedisService;
 import com.pachuco.pachucrud.service.model.GameState;
-import com.pachuco.pachucrud.repository.EventRepository;
-import com.pachuco.pachucrud.repository.TransactionRepository;
 import java.math.BigDecimal;
-import java.util.Collections;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,6 +22,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,19 +37,25 @@ public class GameServiceImpl implements GameService {
     private final RedisService redisService;
     private final EventRepository eventRepository;
     private final TransactionRepository transactionRepository;
+    private final int minPlayers;
+    private final int maxPlayers;
 
     public GameServiceImpl(GameRepository gameRepository,
                            UserRepository userRepository,
                            EventService eventService,
                            RedisService redisService,
                            EventRepository eventRepository,
-                           TransactionRepository transactionRepository) {
+                           TransactionRepository transactionRepository,
+                           @Value("${game.min.players:2}") int minPlayers,
+                           @Value("${game.max.players:6}") int maxPlayers) {
         this.gameRepository = gameRepository;
         this.userRepository = userRepository;
         this.eventService = eventService;
         this.redisService = redisService;
         this.eventRepository = eventRepository;
         this.transactionRepository = transactionRepository;
+        this.minPlayers = minPlayers;
+        this.maxPlayers = maxPlayers;
     }
 
     @Override
@@ -70,9 +78,10 @@ public class GameServiceImpl implements GameService {
         state.setStatus("PENDING");
         state.setRoundStatus("INIT");
         state.setCurrentRound(0);
-        state.setTurnOrder(new java.util.ArrayList<>());
+        state.setTurnOrder(new ArrayList<>());
+        state.setMaxPlayers(maxPlayers);
         state.getWaitingPlayers().add(creatorId);
-        state.setStatusSetTime(java.time.Instant.now());
+        state.setStatusSetTime(Instant.now());
         redisService.setGameState(game.getId(), state);
 
         return game;
@@ -91,11 +100,23 @@ public class GameServiceImpl implements GameService {
         userRepository.findById(userId)
             .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
 
+        GameState state = redisService.getGameState(gameId)
+            .orElseGet(() -> {
+                eventService.rebuildGameStateInRedis(gameId);
+                return redisService.getGameState(gameId).orElseThrow();
+            });
+
+        if (state.getWaitingPlayers().size() + state.getReadyPlayers().size() >= maxPlayers) {
+            throw new IllegalStateException("Game is full (max " + maxPlayers + " players)");
+        }
+
+        if (state.getWaitingPlayers().contains(userId) || state.getReadyPlayers().contains(userId)) {
+            throw new IllegalStateException("User already in this game");
+        }
+
         Map<String, Object> data = new HashMap<>();
         eventService.writeEvent(gameId, EventType.PLAYER_JOINED, userId, data);
 
-        GameState state = redisService.getGameState(gameId)
-            .orElseGet(() -> { eventService.rebuildGameStateInRedis(gameId); return redisService.getGameState(gameId).orElseThrow(); });
         state.getWaitingPlayers().add(userId);
         redisService.setGameState(gameId, state);
     }
@@ -106,29 +127,44 @@ public class GameServiceImpl implements GameService {
         GameEntity game = gameRepository.findById(gameId)
             .orElseThrow(() -> new IllegalArgumentException("Game not found: " + gameId));
 
-        if (game.getStatus() == GameStatus.PENDING) {
-            game.setStatus(GameStatus.ACTIVE);
-            game.setStartedAt(java.time.Instant.now());
-            gameRepository.save(game);
+        GameState state = redisService.getGameState(gameId)
+            .orElseGet(() -> {
+                eventService.rebuildGameStateInRedis(gameId);
+                return redisService.getGameState(gameId).orElseThrow();
+            });
+
+        if (!"GAME_START".equals(state.getRoundStatus())) {
+            throw new IllegalStateException("Round is not in GAME_START stage");
         }
 
-        GameState state = redisService.getGameState(gameId)
-            .orElseGet(() -> { eventService.rebuildGameStateInRedis(gameId); return redisService.getGameState(gameId).orElseThrow(); });
+        if (!housePlayerId.equals(state.getHousePlayerId())) {
+            throw new IllegalStateException("Only the house player can start the round");
+        }
+
+        if (betLimit == null || betLimit.compareTo(BigDecimal.ONE) < 0) {
+            throw new IllegalArgumentException("Bet limit must be at least 1");
+        }
 
         int numPlayers = state.getTurnOrder().size();
-        if (numPlayers < 2) {
-            throw new IllegalStateException("Need at least 2 players to start a round");
+        if (numPlayers < minPlayers) {
+            throw new IllegalStateException("Need at least " + minPlayers + " players to start a round");
         }
 
         BigDecimal houseBalance = redisService.getBalance(housePlayerId)
             .orElseThrow(() -> new IllegalStateException("House balance not available"));
 
         int regularPlayers = numPlayers - 1;
-        BigDecimal required = betLimit.multiply(BigDecimal.valueOf(regularPlayers));
+        BigDecimal required = betLimit.multiply(BigDecimal.valueOf(2)).multiply(BigDecimal.valueOf(regularPlayers));
         if (houseBalance.compareTo(required) < 0) {
             throw new IllegalStateException(
                 "House balance %s insufficient to cover potential payouts %s"
                     .formatted(houseBalance, required));
+        }
+
+        if (game.getStatus() == GameStatus.PENDING) {
+            game.setStatus(GameStatus.ACTIVE);
+            game.setStartedAt(Instant.now());
+            gameRepository.save(game);
         }
 
         Map<String, Object> data = new HashMap<>();
@@ -137,10 +173,10 @@ public class GameServiceImpl implements GameService {
         eventService.writeEvent(gameId, EventType.ROUND_STARTED, housePlayerId, data);
 
         state.setCurrentRound(state.getCurrentRound() + 1);
-        state.setRoundStatus("PLAYERS_BET_SETTING");
+        state.setRoundStatus("BET_SETTING");
         state.setHousePlayerId(housePlayerId);
         state.setBetLimit(betLimit);
-        state.setHouseRoll(null);
+        state.setHouseDice(new ArrayList<>());
         state.getBets().clear();
         state.getPlayerRolls().clear();
         state.getRolledPlayers().clear();
@@ -168,7 +204,7 @@ public class GameServiceImpl implements GameService {
             .orElseThrow(() -> new IllegalArgumentException("Game not found: " + gameId));
 
         game.setStatus(GameStatus.COMPLETED);
-        game.setCompletedAt(java.time.Instant.now());
+        game.setCompletedAt(Instant.now());
         gameRepository.save(game);
 
         Map<String, Object> data = new HashMap<>();

@@ -11,9 +11,15 @@ import java.util.UUID;
 
 public interface EventService {
     EventEntity writeEvent(UUID gameId, EventType eventType, UUID actorId, Map<String, Object> data);
+    EventEntity writeEvent(UUID gameId, EventType eventType, UUID actorId, Map<String, Object> data,
+                           Integer roundNumber);
     EventEntity writeEventWithTransaction(UUID gameId, EventType eventType, UUID actorId,
                                           Map<String, Object> data, UUID userId,
                                           TransactionType txType, BigDecimal amount);
+    EventEntity writeEventWithTransaction(UUID gameId, EventType eventType, UUID actorId,
+                                          Map<String, Object> data, UUID userId,
+                                          TransactionType txType, BigDecimal amount,
+                                          Integer roundNumber);
     void rebuildGameStateInRedis(UUID gameId);
     BigDecimal computeUserBalance(UUID userId);
     void rebuildUserBalanceInRedis(UUID userId);

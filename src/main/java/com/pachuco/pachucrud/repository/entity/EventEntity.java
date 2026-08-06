@@ -23,7 +23,10 @@ import lombok.Data;
 @Entity
 @Table(
     name = "events",
-    uniqueConstraints = @UniqueConstraint(columnNames = {"game_id", "sequence_number"})
+    uniqueConstraints = {
+        @UniqueConstraint(columnNames = {"game_id", "sequence_number"}),
+        @UniqueConstraint(columnNames = {"game_id", "actor_id", "round_number"})
+    }
 )
 @Data
 public class EventEntity {
@@ -44,6 +47,9 @@ public class EventEntity {
 
     @Column(name = "actor_id")
     private UUID actorId;
+
+    @Column(name = "round_number")
+    private Integer roundNumber;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb", nullable = false)

@@ -1,22 +1,27 @@
 package com.pachuco.pachucrud.model;
 
 public enum ThrowCombos {
-    FIVEOFAKIND("five_of_a_kind"),
-    FOUROFAKIND("four_of_a_kind"),
-    FULL("full"),
-    PACHUCO("pachuco"),
-    PAIR("pair"),
-    THREEOFAKIND("three_of_a_kind"),
-    TWOPAIRS("two_pairs");
+    PACHUCO("pachuco", 0),
+    PAIR("pair", 1),
+    TWOPAIRS("two_pairs", 2),
+    THREEOFAKIND("three_of_a_kind", 3),
+    FULL("full", 4),
+    FOUROFAKIND("four_of_a_kind", 5),
+    FIVEOFAKIND("five_of_a_kind", 6);
 
     private final String value;
+    private final int rank;
 
-    // Constructor (must be private or package-private)
-    ThrowCombos(String value) {
+    ThrowCombos(String value, int rank) {
         this.value = value;
+        this.rank = rank;
     }
 
     public String getValue() {
         return value;
+    }
+
+    public int getRank() {
+        return rank;
     }
 }

@@ -17,6 +17,7 @@ import com.pachuco.pachucrud.service.model.GameState;
 import com.pachuco.pachucrud.service.model.GameState.BetInfo;
 import com.pachuco.pachucrud.service.model.GameState.RollInfo;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -52,6 +53,13 @@ public class EventServiceImpl implements EventService {
     @Override
     @Transactional
     public EventEntity writeEvent(UUID gameId, EventType eventType, UUID actorId, Map<String, Object> data) {
+        return writeEvent(gameId, eventType, actorId, data, null);
+    }
+
+    @Override
+    @Transactional
+    public EventEntity writeEvent(UUID gameId, EventType eventType, UUID actorId, Map<String, Object> data,
+                                  Integer roundNumber) {
         GameEntity game = gameRepository.findById(gameId)
             .orElseThrow(() -> new IllegalArgumentException("Game not found: " + gameId));
 
@@ -69,6 +77,7 @@ public class EventServiceImpl implements EventService {
         event.setSequenceNumber(nextSeq);
         event.setEventType(eventType);
         event.setActorId(actorId);
+        event.setRoundNumber(roundNumber);
         event.setData(dataJson);
         event = eventRepository.save(event);
 
@@ -82,7 +91,16 @@ public class EventServiceImpl implements EventService {
     public EventEntity writeEventWithTransaction(UUID gameId, EventType eventType, UUID actorId,
                                                   Map<String, Object> data, UUID userId,
                                                   TransactionType txType, BigDecimal amount) {
-        EventEntity event = writeEvent(gameId, eventType, actorId, data);
+        return writeEventWithTransaction(gameId, eventType, actorId, data, userId, txType, amount, null);
+    }
+
+    @Override
+    @Transactional
+    public EventEntity writeEventWithTransaction(UUID gameId, EventType eventType, UUID actorId,
+                                                  Map<String, Object> data, UUID userId,
+                                                  TransactionType txType, BigDecimal amount,
+                                                  Integer roundNumber) {
+        EventEntity event = writeEvent(gameId, eventType, actorId, data, roundNumber);
 
         if (userId != null && amount != null) {
             UserEntity userRef = new UserEntity();
@@ -125,8 +143,15 @@ public class EventServiceImpl implements EventService {
                     case PLAYER_ROLLED -> {
                         Object outcome = data.get("outcome");
                         Object amt = data.get("amount");
-                        if ("win".equals(outcome) && amt instanceof Number n) {
-                            balance = balance.add(BigDecimal.valueOf(n.doubleValue()));
+                        if (!(amt instanceof Number n)) {
+                            break;
+                        }
+                        BigDecimal bet = BigDecimal.valueOf(n.doubleValue());
+                        switch (outcome != null ? outcome.toString() : "") {
+                            case "win" -> balance = balance.add(bet.multiply(BigDecimal.valueOf(2)));
+                            case "win_double" -> balance = balance.add(bet.multiply(BigDecimal.valueOf(3)));
+                            case "lose_double" -> balance = balance.subtract(bet);
+                            default -> {}
                         }
                     }
                     case DEPOSIT -> {
@@ -160,7 +185,6 @@ public class EventServiceImpl implements EventService {
     @Override
     public GameState replayEvents(List<EventEntity> events) {
         GameState state = new GameState();
-        Map<UUID, BigDecimal> betAmounts = new HashMap<>();
 
         for (EventEntity event : events) {
             try {
@@ -177,15 +201,14 @@ public class EventServiceImpl implements EventService {
                         }
                     }
                     case PLAYER_JOINED -> {
-                        List<UUID> waiting = state.getWaitingPlayers();
                         if (event.getActorId() != null) {
-                            waiting.add(event.getActorId());
+                            state.getWaitingPlayers().add(event.getActorId());
                         }
                     }
                     case ROUND_STARTED -> {
                         state.setCurrentRound(state.getCurrentRound() + 1);
                         state.setRoundStatus("PLAYERS_BET_SETTING");
-                        state.setHouseRoll(null);
+                        state.setHouseDice(new ArrayList<>());
                         state.getBets().clear();
                         state.getPlayerRolls().clear();
                         state.getRolledPlayers().clear();
@@ -203,20 +226,19 @@ public class EventServiceImpl implements EventService {
                         Object amt = data.get("amount");
                         if (amt instanceof Number n && event.getActorId() != null) {
                             state.getBets().add(new BetInfo(event.getActorId(), BigDecimal.valueOf(n.doubleValue())));
-                            betAmounts.put(event.getActorId(), BigDecimal.valueOf(n.doubleValue()));
                         }
                     }
                     case HOUSE_ROLLED -> {
-                        Object val = data.get("diceValue");
-                        if (val instanceof Number n) {
-                            state.setHouseRoll(n.intValue());
-                        }
+                        state.setHouseDice(parseDice(data.get("dice")));
                         state.setRoundStatus("PLAYERS_THROW");
                     }
                     case PLAYER_ROLLED -> {
-                        Object val = data.get("diceValue");
-                        if (val instanceof Number n && event.getActorId() != null) {
-                            state.getPlayerRolls().add(new RollInfo(event.getActorId(), n.intValue()));
+                        if (event.getActorId() != null) {
+                            state.getPlayerRolls().add(new RollInfo(
+                                event.getActorId(),
+                                parseDice(data.get("dice")),
+                                data.get("combo") != null ? data.get("combo").toString() : null,
+                                data.get("outcome") != null ? data.get("outcome").toString() : null));
                             state.getRolledPlayers().add(event.getActorId());
                         }
                     }
@@ -239,6 +261,10 @@ public class EventServiceImpl implements EventService {
                                 if (houseId instanceof String hid) {
                                     state.setHousePlayerId(UUID.fromString(hid));
                                 }
+                                List<UUID> order = parseUuidList(data.get("playerOrder"));
+                                if (!order.isEmpty()) {
+                                    state.setTurnOrder(order);
+                                }
                             }
                         }
                     }
@@ -251,6 +277,7 @@ public class EventServiceImpl implements EventService {
                     case GAME_COMPLETED -> {
                         state.setStatus("COMPLETED");
                     }
+                    default -> {}
                 }
             } catch (Exception e) {
                 log.warn("Failed to replay event: {}", event.getId(), e);
@@ -258,5 +285,35 @@ public class EventServiceImpl implements EventService {
         }
 
         return state;
+    }
+
+    private List<Integer> parseDice(Object raw) {
+        List<Integer> dice = new ArrayList<>();
+        if (raw instanceof List<?> list) {
+            for (Object item : list) {
+                if (item instanceof Number n) {
+                    dice.add(n.intValue());
+                }
+            }
+        } else if (raw instanceof Number n) {
+            dice.add(n.intValue());
+        }
+        return dice;
+    }
+
+    private List<UUID> parseUuidList(Object raw) {
+        List<UUID> ids = new ArrayList<>();
+        if (raw instanceof List<?> list) {
+            for (Object item : list) {
+                if (item instanceof String s) {
+                    try {
+                        ids.add(UUID.fromString(s));
+                    } catch (IllegalArgumentException ignored) {
+                        // skip malformed entries
+                    }
+                }
+            }
+        }
+        return ids;
     }
 }

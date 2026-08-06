@@ -4,10 +4,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pachuco.pachucrud.service.RedisService;
 import com.pachuco.pachucrud.service.model.GameState;
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -21,10 +24,13 @@ public class RedisServiceImpl implements RedisService {
 
     private final StringRedisTemplate redis;
     private final ObjectMapper objectMapper;
+    private final Duration gameTtl;
 
-    public RedisServiceImpl(StringRedisTemplate redis, ObjectMapper objectMapper) {
+    public RedisServiceImpl(StringRedisTemplate redis, ObjectMapper objectMapper,
+                            @Value("${game.ttl:5}") int gameTtlMinutes) {
         this.redis = redis;
         this.objectMapper = objectMapper;
+        this.gameTtl = Duration.ofMinutes(gameTtlMinutes);
     }
 
     @Override
@@ -50,8 +56,9 @@ public class RedisServiceImpl implements RedisService {
     @Override
     public void setGameState(UUID gameId, GameState state) {
         try {
+            state.setLastActivity(Instant.now());
             String json = objectMapper.writeValueAsString(state);
-            redis.opsForValue().set(KEY_GAME_STATE.formatted(gameId.toString()), json);
+            redis.opsForValue().set(KEY_GAME_STATE.formatted(gameId.toString()), json, gameTtl);
         } catch (Exception e) {
             log.error("Failed to serialize game state for {}", gameId, e);
         }
@@ -77,7 +84,7 @@ public class RedisServiceImpl implements RedisService {
 
     @Override
     public void setLastSequence(UUID gameId, int seq) {
-        redis.opsForValue().set(KEY_LAST_SEQ.formatted(gameId.toString()), String.valueOf(seq));
+        redis.opsForValue().set(KEY_LAST_SEQ.formatted(gameId.toString()), String.valueOf(seq), gameTtl);
     }
 
     @Override
