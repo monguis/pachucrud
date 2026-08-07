@@ -72,8 +72,6 @@ public class RollServiceImpl implements RollService {
         eventService.writeEvent(gameId, EventType.HOUSE_ROLLED, housePlayerId, data);
 
         state.setHouseDice(model.getDiceList());
-        state.setRoundStatus("PLAYERS_THROW");
-        state.setCurrentTurn(nextBettorIndex(state, 1));
         redisService.setGameState(gameId, state);
 
         return new RollResult(state, model, "house_rolled", false);
