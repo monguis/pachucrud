@@ -254,6 +254,19 @@ public class GameController extends GameServiceGrpc.GameServiceImplBase {
     }
 
     @Override
+    public void advanceToPlayersThrow(Games.GameIdRequest request,
+                                       StreamObserver<Games.GameResponse> responseObserver) {
+        try {
+            UUID gameId = UUID.fromString(request.getGameId());
+            GameState state = gameStageService.advanceToPlayersThrow(gameId);
+
+            respondOk(responseObserver, java.util.Optional.of(state), "ADVANCED_TO_PLAYERS_THROW");
+        } catch (Exception e) {
+            respondError(responseObserver, e);
+        }
+    }
+
+    @Override
     public void advanceToRoundCompleted(Games.GameIdRequest request,
                                         StreamObserver<Games.GameResponse> responseObserver) {
         try {

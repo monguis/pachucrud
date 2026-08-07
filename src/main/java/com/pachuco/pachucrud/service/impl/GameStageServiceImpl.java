@@ -151,6 +151,44 @@ public class GameStageServiceImpl implements GameStageService {
 
     @Override
     @Transactional
+    public GameState advanceToPlayersThrow(UUID gameId) {
+        GameState state = redisService.getGameState(gameId)
+            .orElseThrow(() -> new IllegalArgumentException("Game state not found"));
+
+        if (!"BANK_THROW".equals(state.getRoundStatus())) {
+            throw new IllegalStateException("Game is not in BANK_THROW stage");
+        }
+
+        if (state.getHouseDice().isEmpty()) {
+            throw new IllegalStateException("House must roll before advancing to players throw");
+        }
+
+        state.setCurrentTurn(findFirstBettorInState(state));
+        state.setRoundStatus("PLAYERS_THROW");
+        state.setStatusSetTime(Instant.now());
+        redisService.setGameState(gameId, state);
+
+        return state;
+    }
+
+    private int findFirstBettorInState(GameState state) {
+        java.util.List<UUID> order = state.getTurnOrder();
+        for (int i = 1; i < order.size(); i++) {
+            UUID player = order.get(i);
+            if (player.equals(state.getHousePlayerId())) {
+                continue;
+            }
+            boolean hasBet = state.getBets().stream()
+                .anyMatch(b -> b.getPlayerId().equals(player));
+            if (hasBet) {
+                return i;
+            }
+        }
+        return order.size();
+    }
+
+    @Override
+    @Transactional
     public GameState advanceToRoundCompleted(UUID gameId) {
         GameState state = redisService.getGameState(gameId)
             .orElseThrow(() -> new IllegalArgumentException("Game state not found"));

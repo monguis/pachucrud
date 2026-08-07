@@ -63,7 +63,7 @@ class RollServiceImplTest {
     }
 
     @Test
-    void houseRoll_setsCurrentTurnToFirstBettor() {
+    void houseRoll_setsDiceAndStaysAtBankThrow() {
         GameState state = bettableState("BANK_THROW");
         bet(state, bob, 10);
         bet(state, carol, 10);
@@ -72,8 +72,7 @@ class RollServiceImplTest {
 
         rollService.houseRoll(gameId, house);
 
-        assertEquals("PLAYERS_THROW", state.getRoundStatus());
-        assertEquals(2, state.getCurrentTurn());
+        assertEquals("BANK_THROW", state.getRoundStatus());
         assertTrue(!state.getHouseDice().isEmpty());
     }
 

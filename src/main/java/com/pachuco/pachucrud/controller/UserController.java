@@ -213,6 +213,12 @@ public class UserController extends UserGrpc.UserImplBase {
     }
 
     private Users.UserResponse toResponse(UserEntity user) {
+        BigDecimal balance = redisService.getBalance(user.getId()).orElseGet(() -> {
+            BigDecimal computed = eventService.computeUserBalance(user.getId());
+            redisService.setBalance(user.getId(), computed);
+            return computed;
+        });
+
         return Users.UserResponse.newBuilder()
             .setId(user.getId().toString())
             .setAuthId(user.getAuthId())
@@ -221,6 +227,7 @@ public class UserController extends UserGrpc.UserImplBase {
             .setEmail(user.getEmail())
             .addAllRoles(user.getRoles().stream()
                 .map(r -> r.name()).collect(Collectors.toList()))
+            .setBalance(balance.doubleValue())
             .build();
     }
 }
