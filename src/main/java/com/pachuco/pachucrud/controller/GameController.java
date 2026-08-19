@@ -69,7 +69,7 @@ public class GameController extends GameServiceGrpc.GameServiceImplBase {
                     .setRoundStatus(state.get().getRoundStatus())
                     .setBetLimit(betLimit.intValue())
                     .setTotalPlayers(totalPlayers)
-                    .addAllTurnOrder(state.get().getTurnOrder())
+                    .addAllTurnOrder(state.get().getTurnOrder().stream().map(UUID::toString).toList())
                     .build());
             }
 

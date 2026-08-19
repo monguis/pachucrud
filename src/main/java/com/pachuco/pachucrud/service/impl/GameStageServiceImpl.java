@@ -245,7 +245,7 @@ public class GameStageServiceImpl implements GameStageService {
         state.setTurnOrder(order);
 
         Map<String, Object> data = new HashMap<>();
-        data.put("targetStage", "GAME_START");
+        data.put("targetStage", "ENOUGH_PLAYERS");
         data.put("housePlayerId", newHouse.toString());
         data.put("playerOrder", order.stream().map(UUID::toString).toList());
         eventService.writeEvent(gameId, EventType.GAME_ADVANCED, null, data);
@@ -256,7 +256,10 @@ public class GameStageServiceImpl implements GameStageService {
         state.setHouseDice(new ArrayList<>());
         state.setBetLimit(null);
         state.setCurrentTurn(0);
-        state.setRoundStatus("GAME_START");
+        state.getWaitingPlayers().clear();
+        state.getWaitingPlayers().addAll(order);
+        state.getReadyPlayers().clear();
+        state.setRoundStatus("ENOUGH_PLAYERS");
         state.setStatusSetTime(Instant.now());
         redisService.setGameState(gameId, state);
 

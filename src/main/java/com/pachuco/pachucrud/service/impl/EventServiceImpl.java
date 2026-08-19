@@ -208,6 +208,9 @@ public class EventServiceImpl implements EventService {
                     case PLAYER_JOINED -> {
                         if (event.getActorId() != null) {
                             state.getWaitingPlayers().add(event.getActorId());
+                            if (!state.getTurnOrder().isEmpty()) {
+                                state.getTurnOrder().add(event.getActorId());
+                            }
                         }
                     }
                     case ROUND_STARTED -> {
@@ -261,14 +264,23 @@ public class EventServiceImpl implements EventService {
                         if (target instanceof String s) {
                             state.setRoundStatus(s);
                             state.setStatusSetTime(null);
-                            if ("BET_SETTING".equals(s)) {
-                                Object houseId = data.get("housePlayerId");
-                                if (houseId instanceof String hid) {
-                                    state.setHousePlayerId(UUID.fromString(hid));
-                                }
-                                List<UUID> order = parseUuidList(data.get("playerOrder"));
-                                if (!order.isEmpty()) {
-                                    state.setTurnOrder(order);
+                            Object houseId = data.get("housePlayerId");
+                            if (houseId instanceof String hid) {
+                                state.setHousePlayerId(UUID.fromString(hid));
+                            }
+                            List<UUID> order = parseUuidList(data.get("playerOrder"));
+                            if (!order.isEmpty()) {
+                                state.setTurnOrder(order);
+                                if ("ENOUGH_PLAYERS".equals(s)) {
+                                    state.getWaitingPlayers().clear();
+                                    state.getWaitingPlayers().addAll(order);
+                                    state.getReadyPlayers().clear();
+                                    state.getBets().clear();
+                                    state.getPlayerRolls().clear();
+                                    state.getRolledPlayers().clear();
+                                    state.setHouseDice(new ArrayList<>());
+                                    state.setBetLimit(null);
+                                    state.setCurrentTurn(0);
                                 }
                             }
                         }

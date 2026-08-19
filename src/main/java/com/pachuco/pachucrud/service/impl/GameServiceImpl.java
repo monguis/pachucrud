@@ -93,7 +93,7 @@ public class GameServiceImpl implements GameService {
         GameEntity game = gameRepository.findById(gameId)
             .orElseThrow(() -> new IllegalArgumentException("Game not found: " + gameId));
 
-        if (game.getStatus() != GameStatus.PENDING) {
+        if (game.getStatus() == GameStatus.COMPLETED) {
             throw new IllegalStateException("Game is not joinable");
         }
 
@@ -106,18 +106,26 @@ public class GameServiceImpl implements GameService {
                 return redisService.getGameState(gameId).orElseThrow();
             });
 
-        if (state.getWaitingPlayers().size() + state.getReadyPlayers().size() >= maxPlayers) {
-            throw new IllegalStateException("Game is full (max " + maxPlayers + " players)");
+        if (state.getWaitingPlayers().contains(userId)
+                || state.getReadyPlayers().contains(userId)
+                || state.getTurnOrder().contains(userId)) {
+            throw new IllegalStateException("User already in this game");
         }
 
-        if (state.getWaitingPlayers().contains(userId) || state.getReadyPlayers().contains(userId)) {
-            throw new IllegalStateException("User already in this game");
+        int currentPlayers = state.getTurnOrder().isEmpty()
+            ? state.getWaitingPlayers().size() + state.getReadyPlayers().size()
+            : state.getTurnOrder().size();
+        if (currentPlayers >= maxPlayers) {
+            throw new IllegalStateException("Game is full (max " + maxPlayers + " players)");
         }
 
         Map<String, Object> data = new HashMap<>();
         eventService.writeEvent(gameId, EventType.PLAYER_JOINED, userId, data);
 
         state.getWaitingPlayers().add(userId);
+        if (!state.getTurnOrder().isEmpty()) {
+            state.getTurnOrder().add(userId);
+        }
         redisService.setGameState(gameId, state);
     }
 
