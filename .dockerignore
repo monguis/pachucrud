@@ -1,0 +1,8 @@
+target
+.git
+.gitignore
+.gitmodules
+.vscode
+.continue
+logs
+*.log
