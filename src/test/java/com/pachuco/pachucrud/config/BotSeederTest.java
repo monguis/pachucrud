@@ -4,6 +4,7 @@ import com.pachuco.pachucrud.model.EventType;
 import com.pachuco.pachucrud.model.UserRole;
 import com.pachuco.pachucrud.repository.UserRepository;
 import com.pachuco.pachucrud.repository.entity.UserEntity;
+import com.pachuco.pachucrud.service.BalanceCache;
 import com.pachuco.pachucrud.service.EventService;
 import com.pachuco.pachucrud.service.RedisService;
 import java.math.BigDecimal;
@@ -45,7 +46,7 @@ class BotSeederTest {
     @BeforeEach
     void setUp() {
         properties = new BotSeedProperties();
-        seeder = new BotSeeder(properties, userRepository, eventService, redisService);
+        seeder = new BotSeeder(properties, userRepository, eventService, new BalanceCache(redisService, eventService));
     }
 
     private UserEntity newUser(String authId) {
@@ -62,7 +63,6 @@ class BotSeederTest {
             u.setId(UUID.randomUUID());
             return u;
         });
-        when(redisService.getBalance(any(UUID.class))).thenReturn(Optional.empty());
     }
 
     @Test

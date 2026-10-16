@@ -5,7 +5,7 @@ import com.pachuco.pachucrud.model.UserRole;
 import com.pachuco.pachucrud.repository.UserRepository;
 import com.pachuco.pachucrud.repository.entity.UserEntity;
 import com.pachuco.pachucrud.service.EventService;
-import com.pachuco.pachucrud.service.RedisService;
+import com.pachuco.pachucrud.service.BalanceCache;
 import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
@@ -28,16 +28,16 @@ public class BotSeeder implements ApplicationRunner {
     private final BotSeedProperties properties;
     private final UserRepository userRepository;
     private final EventService eventService;
-    private final RedisService redisService;
+    private final BalanceCache balanceCache;
 
     public BotSeeder(BotSeedProperties properties,
                      UserRepository userRepository,
                      EventService eventService,
-                     RedisService redisService) {
+                     BalanceCache balanceCache) {
         this.properties = properties;
         this.userRepository = userRepository;
         this.eventService = eventService;
-        this.redisService = redisService;
+        this.balanceCache = balanceCache;
     }
 
     @Override
@@ -87,8 +87,7 @@ public class BotSeeder implements ApplicationRunner {
 
         eventService.writeEvent(null, EventType.DEPOSIT, user.getId(), eventData);
 
-        BigDecimal current = redisService.getBalance(user.getId()).orElse(BigDecimal.ZERO);
-        redisService.setBalance(user.getId(), current.add(amount));
+        balanceCache.setAfterCommit(user.getId(), amount);
 
         log.info("Seeded bot {} (id: {}) with balance {}", authId, user.getId(), amount);
         return true;
