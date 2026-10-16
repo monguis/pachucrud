@@ -116,7 +116,51 @@ class GameBalanceGrpcIntegrationTest {
         assertCacheMatchesEvents(alice);
     }
 
+    @Test
+    void settledRoundMatchesEventsAndIsZeroSum() {
+        String house = player(1000);
+        String alice = player(100);
+        String bob = player(100);
+        String carol = player(100);
+
+        String game = gameAtBetting(house, alice, bob, carol);
+        bet(game, alice, 10);
+        bet(game, bob, 20);
+        bet(game, carol, 30);
+        rollRound(game, house);
+
+        // Dice are random: the invariants must hold whatever the outcomes.
+        assertCacheMatchesEvents(house, alice, bob, carol);
+        assertEquals(1300.0, balance(house) + balance(alice) + balance(bob) + balance(carol));
+    }
+
+    @Test
+    void houseBalanceSurvivesCacheFlush() {
+        String house = player(1000);
+        String alice = player(100);
+
+        String game = gameAtBetting(house, alice);
+        bet(game, alice, 25);
+        rollRound(game, house);
+
+        double before = balance(house);
+        redisService.deleteBalance(UUID.fromString(house));
+
+        assertEquals(before, balance(house));
+    }
+
     // ---- harness ----
+
+    /** House rolls, then every Player who bet rolls in turn until the round completes. */
+    private void rollRound(String game, String house) {
+        games.advanceToBankThrow(gameId(game));
+        games.houseRoll(Games.RollRequest.newBuilder().setGameId(game).setPlayerId(house).build());
+        games.advanceToPlayersThrow(gameId(game));
+        while (!"COMPLETED".equals(games.getGameState(gameId(game)).getRoundStatus())) {
+            String next = games.getCurrentTurn(gameId(game)).getCurrentPlayerId();
+            games.playerRoll(Games.RollRequest.newBuilder().setGameId(game).setPlayerId(next).build());
+        }
+    }
 
     private String player(double startingBalance) {
         return users.addTestPlayer(Users.UserRequest.newBuilder()

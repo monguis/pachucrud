@@ -25,6 +25,11 @@ public interface EventRepository extends JpaRepository<EventEntity, UUID> {
 
     List<EventEntity> findByActorIdOrderByCreatedAtAsc(UUID actorId);
 
+    /** Settlements in which the user was the House (recorded in the event's data). */
+    @Query(value = "SELECT * FROM events WHERE event_type = 'PLAYER_ROLLED'"
+        + " AND data->>'houseId' = :houseId ORDER BY created_at", nativeQuery = true)
+    List<EventEntity> findHouseSettlements(@Param("houseId") String houseId);
+
     long countByEventTypeAndActorId(EventType eventType, UUID actorId);
 
     @Modifying

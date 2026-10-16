@@ -180,6 +180,20 @@ public class EventServiceImpl implements EventService {
             }
         }
 
+        // The House's side of each settlement: the opposite of the Player's net.
+        for (EventEntity event : eventRepository.findHouseSettlements(userId.toString())) {
+            try {
+                Map<String, Object> data = objectMapper.readValue(event.getData(), Map.class);
+                Object outcome = data.get("outcome");
+                if (data.get("amount") instanceof Number n && outcome != null) {
+                    BigDecimal bet = BigDecimal.valueOf(n.doubleValue());
+                    balance = balance.subtract(PachucoRules.playerNet(outcome.toString(), bet));
+                }
+            } catch (Exception e) {
+                log.warn("Failed to parse House settlement for balance computation: {}", event.getId(), e);
+            }
+        }
+
         return balance;
     }
 

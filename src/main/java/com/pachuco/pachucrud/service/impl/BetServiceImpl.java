@@ -98,6 +98,7 @@ public class BetServiceImpl implements BetService {
         Map<String, Object> data = new HashMap<>();
         data.put("amount", betAmount);
         data.put("playerId", playerId.toString());
+        data.put("houseId", state.getHousePlayerId().toString());
         data.put("houseDice", houseModel.getDiceList());
         data.put("playerDice", playerModel.getDiceList());
         data.put("houseCombo", houseModel.getComboName());
