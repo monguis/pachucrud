@@ -1,5 +1,6 @@
 package com.pachuco.pachucrud.service.impl;
 
+import com.pachuco.pachucrud.exception.NotFoundException;
 import com.pachuco.pachucrud.model.EventType;
 import com.pachuco.pachucrud.model.GameStatus;
 import com.pachuco.pachucrud.repository.EventRepository;
@@ -62,7 +63,7 @@ public class GameServiceImpl implements GameService {
     @Transactional
     public GameEntity createGame(UUID creatorId) {
         UserEntity creator = userRepository.findById(creatorId)
-            .orElseThrow(() -> new IllegalArgumentException("User not found: " + creatorId));
+            .orElseThrow(() -> new NotFoundException("User not found: " + creatorId));
 
         GameEntity game = new GameEntity();
         game.setCreator(creator);
@@ -91,14 +92,14 @@ public class GameServiceImpl implements GameService {
     @Transactional
     public void joinGame(UUID gameId, UUID userId) {
         GameEntity game = gameRepository.findById(gameId)
-            .orElseThrow(() -> new IllegalArgumentException("Game not found: " + gameId));
+            .orElseThrow(() -> new NotFoundException("Game not found: " + gameId));
 
         if (game.getStatus() == GameStatus.COMPLETED) {
             throw new IllegalStateException("Game is not joinable");
         }
 
         userRepository.findById(userId)
-            .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+            .orElseThrow(() -> new NotFoundException("User not found: " + userId));
 
         GameState state = redisService.getGameState(gameId)
             .orElseGet(() -> {
@@ -133,7 +134,7 @@ public class GameServiceImpl implements GameService {
     @Transactional
     public void startRound(UUID gameId, UUID housePlayerId, BigDecimal betLimit) {
         GameEntity game = gameRepository.findById(gameId)
-            .orElseThrow(() -> new IllegalArgumentException("Game not found: " + gameId));
+            .orElseThrow(() -> new NotFoundException("Game not found: " + gameId));
 
         GameState state = redisService.getGameState(gameId)
             .orElseGet(() -> {
@@ -213,7 +214,7 @@ public class GameServiceImpl implements GameService {
     @Transactional
     public void completeGame(UUID gameId) {
         GameEntity game = gameRepository.findById(gameId)
-            .orElseThrow(() -> new IllegalArgumentException("Game not found: " + gameId));
+            .orElseThrow(() -> new NotFoundException("Game not found: " + gameId));
 
         game.setStatus(GameStatus.COMPLETED);
         game.setCompletedAt(Instant.now());
@@ -231,7 +232,7 @@ public class GameServiceImpl implements GameService {
     @Transactional
     public void deleteGame(UUID gameId) {
         gameRepository.findById(gameId)
-            .orElseThrow(() -> new IllegalArgumentException("Game not found: " + gameId));
+            .orElseThrow(() -> new NotFoundException("Game not found: " + gameId));
 
         redisService.deleteGameState(gameId);
         transactionRepository.deleteByGameId(gameId);

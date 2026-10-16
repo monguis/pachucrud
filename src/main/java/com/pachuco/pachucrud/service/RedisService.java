@@ -9,6 +9,9 @@ public interface RedisService {
     boolean isReachable();
     void setBalance(UUID userId, BigDecimal balance);
     Optional<BigDecimal> getBalance(UUID userId);
+    /** Atomically adds to a cached balance; leaves a missing key missing. */
+    void incrementBalanceIfPresent(UUID userId, BigDecimal amount);
+    void deleteBalance(UUID userId);
     void setGameState(UUID gameId, GameState state);
     Optional<GameState> getGameState(UUID gameId);
     void deleteGameState(UUID gameId);

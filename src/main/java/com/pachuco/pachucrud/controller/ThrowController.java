@@ -31,22 +31,16 @@ public class ThrowController extends DiceThrowImplBase {
     public void postThrow(ThrowRequest request, StreamObserver<ThrowResponse> responseObserver) {
         logger.info("Posting Throw (MOCK)", request.getGameId(), request.getPlayerId());
 
-        ThrowModel resp;
-        try {
-            resp = this.throwService.generaThrowModel();
-            ThrowResponse response = ThrowResponse.newBuilder()
-                    .setCombo(resp.getCombo().getValue())
-                    .addAllDice(Arrays.asList(resp.getDice()))
-                    .setMostRepeatedDie(resp.getMostRepeatedDice())
-                    .setSecondMostRepeatedDie(resp.getSecondMostRepeatedDice())
-                    .build();
+        ThrowModel resp = this.throwService.generaThrowModel();
+        ThrowResponse response = ThrowResponse.newBuilder()
+                .setCombo(resp.getCombo().getValue())
+                .addAllDice(Arrays.asList(resp.getDice()))
+                .setMostRepeatedDie(resp.getMostRepeatedDice())
+                .setSecondMostRepeatedDie(resp.getSecondMostRepeatedDice())
+                .build();
 
-            responseObserver.onNext(response);
-            responseObserver.onCompleted();
-            logger.info("Posting Throw success (MOCK)", request.getGameId(), request.getPlayerId());
-        } catch (Exception e) {
-            logger.error("Valio gaver" + e);
-        }
-
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+        logger.info("Posting Throw success (MOCK)", request.getGameId(), request.getPlayerId());
     }
 }

@@ -6,12 +6,14 @@ import com.pachuco.pachucrud.service.model.GameState;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -21,6 +23,12 @@ public class RedisServiceImpl implements RedisService {
     private static final String KEY_BALANCE = "user:%s:balance";
     private static final String KEY_GAME_STATE = "game:%s:state";
     private static final String KEY_LAST_SEQ = "game:%s:events:last_seq";
+    // A missing balance is recomputed from events on read, so never create one here.
+    private static final RedisScript<String> INCREMENT_IF_PRESENT = RedisScript.of(
+        "if redis.call('EXISTS', KEYS[1]) == 1 then"
+            + " return redis.call('INCRBYFLOAT', KEYS[1], ARGV[1]) end"
+            + " return false",
+        String.class);
 
     private final StringRedisTemplate redis;
     private final ObjectMapper objectMapper;
@@ -51,6 +59,17 @@ public class RedisServiceImpl implements RedisService {
     public Optional<BigDecimal> getBalance(UUID userId) {
         String val = redis.opsForValue().get(KEY_BALANCE.formatted(userId.toString()));
         return val != null ? Optional.of(new BigDecimal(val)) : Optional.empty();
+    }
+
+    @Override
+    public void incrementBalanceIfPresent(UUID userId, BigDecimal amount) {
+        redis.execute(INCREMENT_IF_PRESENT, List.of(KEY_BALANCE.formatted(userId.toString())),
+            amount.toPlainString());
+    }
+
+    @Override
+    public void deleteBalance(UUID userId) {
+        redis.delete(KEY_BALANCE.formatted(userId.toString()));
     }
 
     @Override

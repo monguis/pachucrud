@@ -1,5 +1,6 @@
 package com.pachuco.pachucrud.service.impl;
 
+import com.pachuco.pachucrud.exception.NotFoundException;
 import com.pachuco.pachucrud.model.EventType;
 import com.pachuco.pachucrud.model.ThrowModel;
 import com.pachuco.pachucrud.service.BetService;
@@ -54,7 +55,7 @@ public class RollServiceImpl implements RollService {
     @Transactional
     public RollResult houseRoll(UUID gameId, UUID housePlayerId) {
         GameState state = redisService.getGameState(gameId)
-            .orElseThrow(() -> new IllegalArgumentException("Game state not found"));
+            .orElseThrow(() -> new NotFoundException("Game state not found"));
 
         if (!"BANK_THROW".equals(state.getRoundStatus())) {
             throw new IllegalStateException("Round is not ready for house roll");
@@ -81,7 +82,7 @@ public class RollServiceImpl implements RollService {
     @Transactional
     public RollResult playerRoll(UUID gameId, UUID playerId) {
         GameState state = redisService.getGameState(gameId)
-            .orElseThrow(() -> new IllegalArgumentException("Game state not found"));
+            .orElseThrow(() -> new NotFoundException("Game state not found"));
 
         if (!"PLAYERS_THROW".equals(state.getRoundStatus())) {
             throw new IllegalStateException("Round is not in player rolling phase");

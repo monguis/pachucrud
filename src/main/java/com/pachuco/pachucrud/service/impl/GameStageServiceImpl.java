@@ -1,5 +1,6 @@
 package com.pachuco.pachucrud.service.impl;
 
+import com.pachuco.pachucrud.exception.NotFoundException;
 import com.pachuco.pachucrud.model.EventType;
 import com.pachuco.pachucrud.model.GameStatus;
 import com.pachuco.pachucrud.repository.GameRepository;
@@ -43,7 +44,7 @@ public class GameStageServiceImpl implements GameStageService {
     @Transactional
     public GameState advanceToEnoughPlayers(UUID gameId) {
         GameState state = redisService.getGameState(gameId)
-            .orElseThrow(() -> new IllegalArgumentException("Game state not found"));
+            .orElseThrow(() -> new NotFoundException("Game state not found"));
 
         if (!"INIT".equals(state.getRoundStatus()) && state.getRoundStatus() != null) {
             throw new IllegalStateException("Game is not in INIT stage");
@@ -64,7 +65,7 @@ public class GameStageServiceImpl implements GameStageService {
     @Transactional
     public GameState advanceToGameStart(UUID gameId, List<UUID> playerOrder) {
         GameState state = redisService.getGameState(gameId)
-            .orElseThrow(() -> new IllegalArgumentException("Game state not found"));
+            .orElseThrow(() -> new NotFoundException("Game state not found"));
 
         if (!"ENOUGH_PLAYERS".equals(state.getRoundStatus())) {
             throw new IllegalStateException("Game is not in ENOUGH_PLAYERS stage");
@@ -86,7 +87,7 @@ public class GameStageServiceImpl implements GameStageService {
         state.setHousePlayerId(housePlayerId);
 
         GameEntity game = gameRepository.findById(gameId)
-            .orElseThrow(() -> new IllegalArgumentException("Game not found"));
+            .orElseThrow(() -> new NotFoundException("Game not found"));
         if (game.getStatus() == GameStatus.PENDING) {
             game.setStatus(GameStatus.ACTIVE);
             game.setStartedAt(Instant.now());
@@ -111,7 +112,7 @@ public class GameStageServiceImpl implements GameStageService {
     @Transactional
     public GameState advanceToPlayersBetSetting(UUID gameId) {
         GameState state = redisService.getGameState(gameId)
-            .orElseThrow(() -> new IllegalArgumentException("Game state not found"));
+            .orElseThrow(() -> new NotFoundException("Game state not found"));
 
         if (!"BET_SETTING".equals(state.getRoundStatus())) {
             throw new IllegalStateException("Game is not in BET_SETTING stage");
@@ -132,7 +133,7 @@ public class GameStageServiceImpl implements GameStageService {
     @Transactional
     public GameState advanceToBankThrow(UUID gameId) {
         GameState state = redisService.getGameState(gameId)
-            .orElseThrow(() -> new IllegalArgumentException("Game state not found"));
+            .orElseThrow(() -> new NotFoundException("Game state not found"));
 
         if (!"PLAYERS_BET_SETTING".equals(state.getRoundStatus())) {
             throw new IllegalStateException("Game is not in PLAYERS_BET_SETTING stage");
@@ -153,7 +154,7 @@ public class GameStageServiceImpl implements GameStageService {
     @Transactional
     public GameState advanceToPlayersThrow(UUID gameId) {
         GameState state = redisService.getGameState(gameId)
-            .orElseThrow(() -> new IllegalArgumentException("Game state not found"));
+            .orElseThrow(() -> new NotFoundException("Game state not found"));
 
         if (!"BANK_THROW".equals(state.getRoundStatus())) {
             throw new IllegalStateException("Game is not in BANK_THROW stage");
@@ -191,7 +192,7 @@ public class GameStageServiceImpl implements GameStageService {
     @Transactional
     public GameState advanceToRoundCompleted(UUID gameId) {
         GameState state = redisService.getGameState(gameId)
-            .orElseThrow(() -> new IllegalArgumentException("Game state not found"));
+            .orElseThrow(() -> new NotFoundException("Game state not found"));
 
         if (!"PLAYERS_THROW".equals(state.getRoundStatus())) {
             throw new IllegalStateException("Game is not in PLAYERS_THROW stage");
@@ -212,7 +213,7 @@ public class GameStageServiceImpl implements GameStageService {
     @Transactional
     public GameState advanceToNextRound(UUID gameId) {
         GameState state = redisService.getGameState(gameId)
-            .orElseThrow(() -> new IllegalArgumentException("Game state not found"));
+            .orElseThrow(() -> new NotFoundException("Game state not found"));
 
         if (!"COMPLETED".equals(state.getRoundStatus())) {
             throw new IllegalStateException("Round is not completed");
@@ -270,7 +271,7 @@ public class GameStageServiceImpl implements GameStageService {
     @Transactional
     public GameState markPlayerReady(UUID gameId, UUID playerId) {
         GameState state = redisService.getGameState(gameId)
-            .orElseThrow(() -> new IllegalArgumentException("Game state not found"));
+            .orElseThrow(() -> new NotFoundException("Game state not found"));
 
         if (!"ENOUGH_PLAYERS".equals(state.getRoundStatus())) {
             throw new IllegalStateException("Game is not in ENOUGH_PLAYERS stage");
@@ -298,7 +299,7 @@ public class GameStageServiceImpl implements GameStageService {
     @Override
     public GameState getCurrentTurn(UUID gameId) {
         GameState state = redisService.getGameState(gameId)
-            .orElseThrow(() -> new IllegalArgumentException("Game state not found"));
+            .orElseThrow(() -> new NotFoundException("Game state not found"));
 
         return state;
     }

@@ -13,7 +13,7 @@ import com.pachuco.pachucrud.service.ThrowService;
 public class ThrowServiceImpl implements ThrowService{
     Logger logger = LoggerFactory.getLogger(ThrowServiceImpl.class);
 
-    public ThrowModel generaThrowModel() throws Exception {
+    public ThrowModel generaThrowModel() {
         Random random = new Random();
         
         Integer[] diceThrow = new Integer[] {

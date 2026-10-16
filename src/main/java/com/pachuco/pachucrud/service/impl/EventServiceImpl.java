@@ -1,5 +1,6 @@
 package com.pachuco.pachucrud.service.impl;
 
+import com.pachuco.pachucrud.exception.NotFoundException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pachuco.pachucrud.model.EventType;
@@ -65,7 +66,7 @@ public class EventServiceImpl implements EventService {
         GameEntity game = null;
         if (gameId != null) {
             game = gameRepository.findById(gameId)
-                .orElseThrow(() -> new IllegalArgumentException("Game not found: " + gameId));
+                .orElseThrow(() -> new NotFoundException("Game not found: " + gameId));
             nextSeq = eventRepository.getMaxSequenceNumber(gameId) + 1;
         }
 

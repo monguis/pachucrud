@@ -1,5 +1,6 @@
 package com.pachuco.pachucrud.service.impl;
 
+import com.pachuco.pachucrud.exception.NotFoundException;
 import com.pachuco.pachucrud.model.EventType;
 import com.pachuco.pachucrud.model.PachucoRules;
 import com.pachuco.pachucrud.model.ThrowModel;
@@ -37,7 +38,7 @@ public class BetServiceImpl implements BetService {
     @Transactional
     public void placeBet(UUID gameId, UUID playerId, BigDecimal amount) {
         GameState state = redisService.getGameState(gameId)
-            .orElseThrow(() -> new IllegalArgumentException("Game state not found in Redis"));
+            .orElseThrow(() -> new NotFoundException("Game state not found in Redis"));
 
         if (!"PLAYERS_BET_SETTING".equals(state.getRoundStatus())) {
             throw new IllegalStateException("Round is not in betting phase");
@@ -84,7 +85,7 @@ public class BetServiceImpl implements BetService {
     @Transactional
     public String settleBet(UUID gameId, UUID playerId, ThrowModel houseModel, ThrowModel playerModel) {
         GameState state = redisService.getGameState(gameId)
-            .orElseThrow(() -> new IllegalArgumentException("Game state not found in Redis"));
+            .orElseThrow(() -> new NotFoundException("Game state not found in Redis"));
 
         BetInfo bet = state.getBets().stream()
             .filter(b -> b.getPlayerId().equals(playerId))
