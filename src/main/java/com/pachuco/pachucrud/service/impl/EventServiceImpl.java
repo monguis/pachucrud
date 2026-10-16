@@ -3,6 +3,7 @@ package com.pachuco.pachucrud.service.impl;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pachuco.pachucrud.model.EventType;
+import com.pachuco.pachucrud.model.PachucoRules;
 import com.pachuco.pachucrud.model.TransactionType;
 import com.pachuco.pachucrud.repository.EventRepository;
 import com.pachuco.pachucrud.repository.GameRepository;
@@ -242,11 +243,19 @@ public class EventServiceImpl implements EventService {
                     }
                     case PLAYER_ROLLED -> {
                         if (event.getActorId() != null) {
+                            // settleBet writes playerDice/playerCombo; older events used dice/combo
+                            Object dice = data.containsKey("playerDice") ? data.get("playerDice") : data.get("dice");
+                            Object combo = data.containsKey("playerCombo") ? data.get("playerCombo") : data.get("combo");
+                            String outcome = data.get("outcome") != null ? data.get("outcome").toString() : null;
+                            BigDecimal net = outcome != null && data.get("amount") instanceof Number amt
+                                ? PachucoRules.playerNet(outcome, new BigDecimal(amt.toString()))
+                                : null;
                             state.getPlayerRolls().add(new RollInfo(
                                 event.getActorId(),
-                                parseDice(data.get("dice")),
-                                data.get("combo") != null ? data.get("combo").toString() : null,
-                                data.get("outcome") != null ? data.get("outcome").toString() : null));
+                                parseDice(dice),
+                                combo != null ? combo.toString() : null,
+                                outcome,
+                                net));
                             state.getRolledPlayers().add(event.getActorId());
                         }
                     }

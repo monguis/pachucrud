@@ -61,8 +61,10 @@ public class BetServiceImpl implements BetService {
             return computed;
         });
 
-        if (playerBalance.compareTo(amount) < 0) {
-            throw new IllegalStateException("Insufficient balance: have " + playerBalance + ", need " + amount);
+        // A pachuco loses 2x the bet, so the player must be able to cover that worst case.
+        BigDecimal required = amount.multiply(BigDecimal.valueOf(2));
+        if (playerBalance.compareTo(required) < 0) {
+            throw new IllegalStateException("Insufficient balance: have " + playerBalance + ", need " + required + " (2x bet)");
         }
 
         Map<String, Object> data = new HashMap<>();
@@ -150,7 +152,8 @@ public class BetServiceImpl implements BetService {
         }
 
         state.getRolledPlayers().add(playerId);
-        state.getPlayerRolls().add(new RollInfo(playerId, playerModel.getDiceList(), playerModel.getComboName(), outcome));
+        state.getPlayerRolls().add(new RollInfo(playerId, playerModel.getDiceList(), playerModel.getComboName(),
+            outcome, PachucoRules.playerNet(outcome, betAmount)));
         redisService.setGameState(gameId, state);
 
         return outcome;

@@ -1,5 +1,6 @@
 package com.pachuco.pachucrud.service.model;
 
+import com.pachuco.pachucrud.model.ThrowModel;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -29,13 +30,18 @@ public class GameState {
         private List<Integer> dice = new ArrayList<>();
         private String combo;
         private String outcome;
+        private BigDecimal net;
 
         public RollInfo() {}
         public RollInfo(UUID playerId, List<Integer> dice, String combo, String outcome) {
+            this(playerId, dice, combo, outcome, null);
+        }
+        public RollInfo(UUID playerId, List<Integer> dice, String combo, String outcome, BigDecimal net) {
             this.playerId = playerId;
             this.dice = dice != null ? dice : new ArrayList<>();
             this.combo = combo;
             this.outcome = outcome;
+            this.net = net;
         }
 
         public UUID getPlayerId() { return playerId; }
@@ -46,6 +52,8 @@ public class GameState {
         public void setCombo(String combo) { this.combo = combo; }
         public String getOutcome() { return outcome; }
         public void setOutcome(String outcome) { this.outcome = outcome; }
+        public BigDecimal getNet() { return net; }
+        public void setNet(BigDecimal net) { this.net = net; }
     }
 
     private UUID gameId;
@@ -88,6 +96,14 @@ public class GameState {
     public void setBets(List<BetInfo> bets) { this.bets = bets; }
     public List<Integer> getHouseDice() { return houseDice; }
     public void setHouseDice(List<Integer> houseDice) { this.houseDice = houseDice != null ? houseDice : new ArrayList<>(); }
+
+    /** Derived from houseDice so it can never drift; serialized for clients, ignored on read. */
+    public String getHouseCombo() {
+        if (houseDice == null || houseDice.size() != 5) {
+            return null;
+        }
+        return new ThrowModel(houseDice.toArray(new Integer[0])).getComboName();
+    }
     public List<RollInfo> getPlayerRolls() { return playerRolls; }
     public void setPlayerRolls(List<RollInfo> playerRolls) { this.playerRolls = playerRolls; }
     public List<UUID> getRolledPlayers() { return rolledPlayers; }

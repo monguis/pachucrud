@@ -1,5 +1,6 @@
 package com.pachuco.pachucrud.service;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pachuco.pachucrud.model.EventType;
 import com.pachuco.pachucrud.repository.EventRepository;
@@ -9,6 +10,7 @@ import com.pachuco.pachucrud.repository.entity.EventEntity;
 import com.pachuco.pachucrud.repository.entity.GameEntity;
 import com.pachuco.pachucrud.service.impl.EventServiceImpl;
 import com.pachuco.pachucrud.service.model.GameState;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,6 +20,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @ExtendWith(MockitoExtension.class)
@@ -89,6 +92,40 @@ class EventServiceImplTest {
 
         assertEquals(4, state.getTurnOrder().size());
         assertEquals(4, state.getWaitingPlayers().size());
+    }
+
+    @Test
+    void replay_readsSettleBetPayloadKeysAndDerivesNet() {
+        List<EventEntity> events = List.of(
+            event(EventType.GAME_CREATED, house, "{}"),
+            event(EventType.PLAYER_JOINED, alice, "{}"),
+            event(EventType.GAME_ADVANCED, null, gameStartEvent()),
+            event(EventType.PLAYER_ROLLED, alice,
+                "{\"amount\":10,\"playerDice\":[2,2,5,5,6],\"playerCombo\":\"two_pairs\",\"outcome\":\"win\"}"));
+
+        GameState state = eventService.replayEvents(events);
+
+        GameState.RollInfo roll = state.getPlayerRolls().get(0);
+        assertEquals(List.of(2, 2, 5, 5, 6), roll.getDice());
+        assertEquals("two_pairs", roll.getCombo());
+        assertEquals(0, BigDecimal.TEN.compareTo(roll.getNet()));
+    }
+
+    @Test
+    void houseCombo_isDerivedFromHouseDiceAndSerialized() throws Exception {
+        GameState state = new GameState();
+        assertNull(state.getHouseCombo());
+        state.setHouseDice(List.of(4, 4, 4, 1, 1));
+        assertEquals("full", state.getHouseCombo());
+
+        ObjectMapper mapper = new ObjectMapper()
+            .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+        String json = mapper.writeValueAsString(state);
+        assertTrue(json.contains("\"houseCombo\":\"full\""));
+        assertEquals("full", mapper.readValue(json, GameState.class).getHouseCombo());
+
+        state.setHouseDice(new java.util.ArrayList<>());
+        assertNull(state.getHouseCombo());
     }
 
     @Test
