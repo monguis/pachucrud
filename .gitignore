@@ -32,3 +32,6 @@ logs/
 
 ### VS Code ###
 .vscode/
+
+### Agent skills config ###
+docs/agents/
