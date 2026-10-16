@@ -76,7 +76,7 @@ public class BetServiceImpl implements BetService {
             gameId, EventType.BET_PLACED, playerId, data,
             playerId, TransactionType.BET_HOLD, amount);
 
-        redisService.setBalance(playerId, playerBalance.subtract(amount));
+        balanceCache.addAfterCommit(playerId, amount.negate());
         state.getBets().add(new BetInfo(playerId, amount));
         redisService.setGameState(gameId, state);
     }

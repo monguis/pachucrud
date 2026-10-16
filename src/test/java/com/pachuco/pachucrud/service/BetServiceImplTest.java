@@ -59,7 +59,7 @@ class BetServiceImplTest {
 
         assertThrows(IllegalStateException.class,
             () -> betService.placeBet(gameId, alice, BigDecimal.TEN));
-        verify(redisService, never()).setBalance(eq(alice), any());
+        verify(redisService, never()).incrementBalanceIfPresent(eq(alice), any());
     }
 
     @Test
@@ -70,7 +70,7 @@ class BetServiceImplTest {
 
         betService.placeBet(gameId, alice, BigDecimal.TEN);
 
-        verify(redisService).setBalance(alice, BigDecimal.valueOf(10));
+        verify(redisService).incrementBalanceIfPresent(alice, BigDecimal.valueOf(-10));
         assertEquals(1, state.getBets().size());
     }
 
