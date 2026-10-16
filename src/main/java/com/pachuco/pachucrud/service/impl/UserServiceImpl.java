@@ -7,7 +7,6 @@ import com.pachuco.pachucrud.repository.UserRepository;
 import com.pachuco.pachucrud.repository.entity.UserEntity;
 import com.pachuco.pachucrud.service.BalanceCache;
 import com.pachuco.pachucrud.service.EventService;
-import com.pachuco.pachucrud.service.RedisService;
 import com.pachuco.pachucrud.service.UserService;
 import java.math.BigDecimal;
 import java.util.HashMap;
@@ -23,18 +22,15 @@ import org.springframework.transaction.annotation.Transactional;
 public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
-    private final RedisService redisService;
     private final EventService eventService;
     private final BalanceCache balanceCache;
     private final boolean testPlayersEnabled;
 
     public UserServiceImpl(UserRepository userRepository,
-                           RedisService redisService,
                            EventService eventService,
                            BalanceCache balanceCache,
                            @Value("${test-players.enabled:false}") boolean testPlayersEnabled) {
         this.userRepository = userRepository;
-        this.redisService = redisService;
         this.eventService = eventService;
         this.balanceCache = balanceCache;
         this.testPlayersEnabled = testPlayersEnabled;
@@ -140,11 +136,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public BigDecimal getBalance(UUID userId) {
-        return redisService.getBalance(userId).orElseGet(() -> {
-            BigDecimal computed = eventService.computeUserBalance(userId);
-            redisService.setBalance(userId, computed);
-            return computed;
-        });
+        return balanceCache.get(userId);
     }
 
     @Override

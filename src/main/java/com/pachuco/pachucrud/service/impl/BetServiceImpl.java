@@ -5,6 +5,7 @@ import com.pachuco.pachucrud.model.EventType;
 import com.pachuco.pachucrud.model.PachucoRules;
 import com.pachuco.pachucrud.model.ThrowModel;
 import com.pachuco.pachucrud.model.TransactionType;
+import com.pachuco.pachucrud.service.BalanceCache;
 import com.pachuco.pachucrud.service.BetService;
 import com.pachuco.pachucrud.service.EventService;
 import com.pachuco.pachucrud.service.RedisService;
@@ -28,10 +29,13 @@ public class BetServiceImpl implements BetService {
 
     private final EventService eventService;
     private final RedisService redisService;
+    private final BalanceCache balanceCache;
 
-    public BetServiceImpl(EventService eventService, RedisService redisService) {
+    public BetServiceImpl(EventService eventService, RedisService redisService,
+                          BalanceCache balanceCache) {
         this.eventService = eventService;
         this.redisService = redisService;
+        this.balanceCache = balanceCache;
     }
 
     @Override
@@ -56,11 +60,7 @@ public class BetServiceImpl implements BetService {
             throw new IllegalArgumentException("Bet amount must be positive");
         }
 
-        BigDecimal playerBalance = redisService.getBalance(playerId).orElseGet(() -> {
-            BigDecimal computed = eventService.computeUserBalance(playerId);
-            redisService.setBalance(playerId, computed);
-            return computed;
-        });
+        BigDecimal playerBalance = balanceCache.get(playerId);
 
         // A pachuco loses 2x the bet, so the player must be able to cover that worst case.
         BigDecimal required = amount.multiply(BigDecimal.valueOf(2));
@@ -123,16 +123,8 @@ public class BetServiceImpl implements BetService {
             gameId, EventType.PLAYER_ROLLED, playerId, data,
             playerId, txType, netDelta, state.getCurrentRound());
 
-        BigDecimal playerBalance = redisService.getBalance(playerId).orElseGet(() -> {
-            BigDecimal computed = eventService.computeUserBalance(playerId);
-            redisService.setBalance(playerId, computed);
-            return computed;
-        });
-        BigDecimal houseBalance = redisService.getBalance(state.getHousePlayerId()).orElseGet(() -> {
-            BigDecimal computed = eventService.computeUserBalance(state.getHousePlayerId());
-            redisService.setBalance(state.getHousePlayerId(), computed);
-            return computed;
-        });
+        BigDecimal playerBalance = balanceCache.get(playerId);
+        BigDecimal houseBalance = balanceCache.get(state.getHousePlayerId());
 
         switch (outcome) {
             case "win" -> {

@@ -45,7 +45,8 @@ class GameServiceImplTest {
     @BeforeEach
     void setUp() {
         gameService = new GameServiceImpl(gameRepository, userRepository, eventService,
-            redisService, eventRepository, transactionRepository, 2, 6);
+            redisService, eventRepository, transactionRepository,
+            new BalanceCache(redisService, eventService), 2, 6);
         gameId = UUID.randomUUID();
         house = UUID.randomUUID();
         alice = UUID.randomUUID();

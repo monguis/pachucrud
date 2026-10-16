@@ -20,9 +20,20 @@ public class BalanceCache {
     private static final Logger log = LoggerFactory.getLogger(BalanceCache.class);
 
     private final RedisService redisService;
+    private final EventService eventService;
 
-    public BalanceCache(RedisService redisService) {
+    public BalanceCache(RedisService redisService, EventService eventService) {
         this.redisService = redisService;
+        this.eventService = eventService;
+    }
+
+    /** The cached balance, or the balance recomputed from events (and cached) on a miss. */
+    public BigDecimal get(UUID userId) {
+        return redisService.getBalance(userId).orElseGet(() -> {
+            BigDecimal computed = eventService.computeUserBalance(userId);
+            redisService.setBalance(userId, computed);
+            return computed;
+        });
     }
 
     public void setAfterCommit(UUID userId, BigDecimal balance) {

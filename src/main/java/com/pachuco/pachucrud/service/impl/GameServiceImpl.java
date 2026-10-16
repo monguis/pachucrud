@@ -9,6 +9,7 @@ import com.pachuco.pachucrud.repository.TransactionRepository;
 import com.pachuco.pachucrud.repository.UserRepository;
 import com.pachuco.pachucrud.repository.entity.GameEntity;
 import com.pachuco.pachucrud.repository.entity.UserEntity;
+import com.pachuco.pachucrud.service.BalanceCache;
 import com.pachuco.pachucrud.service.EventService;
 import com.pachuco.pachucrud.service.GameService;
 import com.pachuco.pachucrud.service.RedisService;
@@ -38,6 +39,7 @@ public class GameServiceImpl implements GameService {
     private final RedisService redisService;
     private final EventRepository eventRepository;
     private final TransactionRepository transactionRepository;
+    private final BalanceCache balanceCache;
     private final int minPlayers;
     private final int maxPlayers;
 
@@ -47,6 +49,7 @@ public class GameServiceImpl implements GameService {
                            RedisService redisService,
                            EventRepository eventRepository,
                            TransactionRepository transactionRepository,
+                           BalanceCache balanceCache,
                            @Value("${game.min.players:2}") int minPlayers,
                            @Value("${game.max.players:6}") int maxPlayers) {
         this.gameRepository = gameRepository;
@@ -55,6 +58,7 @@ public class GameServiceImpl implements GameService {
         this.redisService = redisService;
         this.eventRepository = eventRepository;
         this.transactionRepository = transactionRepository;
+        this.balanceCache = balanceCache;
         this.minPlayers = minPlayers;
         this.maxPlayers = maxPlayers;
     }
@@ -159,11 +163,7 @@ public class GameServiceImpl implements GameService {
             throw new IllegalStateException("Need at least " + minPlayers + " players to start a round");
         }
 
-        BigDecimal houseBalance = redisService.getBalance(housePlayerId).orElseGet(() -> {
-            BigDecimal computed = eventService.computeUserBalance(housePlayerId);
-            redisService.setBalance(housePlayerId, computed);
-            return computed;
-        });
+        BigDecimal houseBalance = balanceCache.get(housePlayerId);
 
         int regularPlayers = numPlayers - 1;
         BigDecimal required = betLimit.multiply(BigDecimal.valueOf(2)).multiply(BigDecimal.valueOf(regularPlayers));

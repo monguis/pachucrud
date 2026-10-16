@@ -1,6 +1,7 @@
 package com.pachuco.pachucrud.service;
 
 import java.math.BigDecimal;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -10,7 +11,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
@@ -18,6 +21,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 class BalanceCacheTest {
 
     @Mock RedisService redisService;
+    @Mock EventService eventService;
 
     private final UUID userId = UUID.randomUUID();
 
@@ -31,7 +35,7 @@ class BalanceCacheTest {
     @Test
     void writesOnlyAfterCommit() {
         TransactionSynchronizationManager.initSynchronization();
-        BalanceCache cache = new BalanceCache(redisService);
+        BalanceCache cache = new BalanceCache(redisService, eventService);
 
         cache.setAfterCommit(userId, BigDecimal.TEN);
         verifyNoInteractions(redisService);
@@ -44,7 +48,7 @@ class BalanceCacheTest {
     @Test
     void neverWritesWhenTransactionRollsBack() {
         TransactionSynchronizationManager.initSynchronization();
-        BalanceCache cache = new BalanceCache(redisService);
+        BalanceCache cache = new BalanceCache(redisService, eventService);
 
         cache.addAfterCommit(userId, BigDecimal.TEN);
         TransactionSynchronizationManager.getSynchronizations()
@@ -55,9 +59,18 @@ class BalanceCacheTest {
 
     @Test
     void writesImmediatelyOutsideTransaction() {
-        new BalanceCache(redisService).addAfterCommit(userId, BigDecimal.ONE);
+        new BalanceCache(redisService, eventService).addAfterCommit(userId, BigDecimal.ONE);
 
         verify(redisService).incrementBalanceIfPresent(userId, BigDecimal.ONE);
+    }
+
+    @Test
+    void getRecomputesFromEventsAndCachesOnMiss() {
+        when(redisService.getBalance(userId)).thenReturn(Optional.empty());
+        when(eventService.computeUserBalance(userId)).thenReturn(new BigDecimal("75"));
+
+        assertEquals(new BigDecimal("75"), new BalanceCache(redisService, eventService).get(userId));
+        verify(redisService).setBalance(userId, new BigDecimal("75"));
     }
 
     @Test
@@ -65,7 +78,7 @@ class BalanceCacheTest {
         doThrow(new IllegalStateException("redis down"))
             .when(redisService).setBalance(userId, BigDecimal.TEN);
 
-        new BalanceCache(redisService).setAfterCommit(userId, BigDecimal.TEN);
+        new BalanceCache(redisService, eventService).setAfterCommit(userId, BigDecimal.TEN);
 
         verify(redisService).deleteBalance(userId);
     }

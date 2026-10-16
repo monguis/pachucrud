@@ -36,7 +36,7 @@ class BetServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        betService = new BetServiceImpl(eventService, redisService);
+        betService = new BetServiceImpl(eventService, redisService, new BalanceCache(redisService, eventService));
         gameId = UUID.randomUUID();
         house = UUID.randomUUID();
         alice = UUID.randomUUID();

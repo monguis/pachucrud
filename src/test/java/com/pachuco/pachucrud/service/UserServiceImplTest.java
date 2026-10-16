@@ -33,12 +33,11 @@ import static org.mockito.Mockito.when;
 class UserServiceImplTest {
 
     @Mock UserRepository userRepository;
-    @Mock RedisService redisService;
     @Mock EventService eventService;
     @Mock BalanceCache balanceCache;
 
     private UserServiceImpl service(boolean testPlayersEnabled) {
-        return new UserServiceImpl(userRepository, redisService, eventService, balanceCache,
+        return new UserServiceImpl(userRepository, eventService, balanceCache,
             testPlayersEnabled);
     }
 
@@ -112,7 +111,7 @@ class UserServiceImplTest {
         assertSame(existing, service(false).addPlayerUser("auth|back", "back@example.com"));
 
         verify(userRepository, never()).saveAndFlush(any());
-        verifyNoInteractions(balanceCache, redisService);
+        verifyNoInteractions(balanceCache);
     }
 
     @Test
@@ -123,7 +122,6 @@ class UserServiceImplTest {
 
         verify(eventService).writeEvent(isNull(), eq(EventType.DEPOSIT), eq(userId), anyMap());
         verify(balanceCache).addAfterCommit(userId, new BigDecimal("50"));
-        verify(redisService, never()).setBalance(any(), any());
     }
 
     @Test
@@ -134,12 +132,10 @@ class UserServiceImplTest {
     }
 
     @Test
-    void getBalanceRecomputesFromEventsOnCacheMiss() {
+    void getBalanceReadsThroughTheCache() {
         UUID userId = UUID.randomUUID();
-        when(redisService.getBalance(userId)).thenReturn(Optional.empty());
-        when(eventService.computeUserBalance(userId)).thenReturn(new BigDecimal("75"));
+        when(balanceCache.get(userId)).thenReturn(new BigDecimal("75"));
 
         assertEquals(new BigDecimal("75"), service(false).getBalance(userId));
-        verify(redisService).setBalance(userId, new BigDecimal("75"));
     }
 }
