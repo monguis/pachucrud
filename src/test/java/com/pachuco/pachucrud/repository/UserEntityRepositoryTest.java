@@ -94,6 +94,27 @@ class UserEntityRepositoryTest {
     }
 
     @Test
+    void shouldFindOnlyUsersWithGivenRole() {
+        userRepository.save(userWithRoles("auth|tp", "tp@example.com", "tp", UserRole.PLAYER, UserRole.TEST_PLAYER));
+        userRepository.save(userWithRoles("auth|p", "p@example.com", "p", UserRole.PLAYER));
+        userRepository.save(userWithRoles("auth|a", "a@example.com", "a", UserRole.ADMIN));
+
+        List<UserEntity> found = userRepository.findByRole(UserRole.TEST_PLAYER);
+
+        assertEquals(1, found.size());
+        assertEquals("tp", found.get(0).getUsername());
+    }
+
+    private UserEntity userWithRoles(String authId, String email, String username, UserRole... roles) {
+        UserEntity user = new UserEntity();
+        user.setAuthId(authId);
+        user.setEmail(email);
+        user.setUsername(username);
+        user.setRoles(List.of(roles));
+        return user;
+    }
+
+    @Test
     void shouldFindUserByAuthIdAndReturnRoles() {
         UserEntity user = new UserEntity();
         user.setAuthId("auth|controller-test");

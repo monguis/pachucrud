@@ -2,5 +2,6 @@ package com.pachuco.pachucrud.model;
 
 public enum UserRole {
     PLAYER,
-    ADMIN
+    ADMIN,
+    TEST_PLAYER
 }

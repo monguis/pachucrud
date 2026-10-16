@@ -113,6 +113,63 @@ public class UserController extends UserGrpc.UserImplBase {
 
     @Override
     @Transactional
+    public void addTestPlayer(Users.UserRequest request,
+                              StreamObserver<Users.UserResponse> responseObserver) {
+        try {
+            String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+            String username = request.getUsername().isEmpty() ? "test_" + suffix : request.getUsername();
+            String nickname = request.getNickname().isEmpty() ? username : request.getNickname();
+            BigDecimal balance = BigDecimal.valueOf(request.getBalance());
+            if (balance.compareTo(BigDecimal.ZERO) < 0) {
+                throw new IllegalArgumentException("Balance must not be negative");
+            }
+            String uniqueId = UUID.randomUUID().toString();
+
+            UserEntity created = new UserEntity();
+            created.setAuthId("test-player|" + uniqueId);
+            created.setEmail("test-player-" + uniqueId + "@test.local");
+            created.setUsername(username);
+            created.setNickname(nickname);
+            created.setRoles(List.of(UserRole.PLAYER, UserRole.TEST_PLAYER));
+            UserEntity entity = userRepository.saveAndFlush(created);
+
+            redisService.setBalance(entity.getId(), balance);
+
+            responseObserver.onNext(toResponse(entity));
+            responseObserver.onCompleted();
+        } catch (Exception e) {
+            responseObserver.onError(
+                Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public void listUsersByRole(Users.RoleRequest request,
+                                StreamObserver<Users.UsersResponse> responseObserver) {
+        try {
+            UserRole role;
+            try {
+                role = UserRole.valueOf(request.getRole());
+            } catch (IllegalArgumentException e) {
+                responseObserver.onError(Status.INVALID_ARGUMENT
+                    .withDescription("Unknown role: " + request.getRole()).asRuntimeException());
+                return;
+            }
+            Users.UsersResponse.Builder response = Users.UsersResponse.newBuilder();
+            for (UserEntity user : userRepository.findByRole(role)) {
+                response.addUsers(toResponse(user));
+            }
+            responseObserver.onNext(response.build());
+            responseObserver.onCompleted();
+        } catch (Exception e) {
+            responseObserver.onError(
+                Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+        }
+    }
+
+    @Override
+    @Transactional
     public void updateUser(Users.UpdateUserRequest request,
                            StreamObserver<Users.UserResponse> responseObserver) {
         try {
