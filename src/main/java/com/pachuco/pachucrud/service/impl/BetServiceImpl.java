@@ -124,30 +124,15 @@ public class BetServiceImpl implements BetService {
             gameId, EventType.PLAYER_ROLLED, playerId, data,
             playerId, txType, netDelta, state.getCurrentRound());
 
-        BigDecimal playerBalance = balanceCache.get(playerId);
-        BigDecimal houseBalance = balanceCache.get(state.getHousePlayerId());
-
-        switch (outcome) {
-            case "win" -> {
-                redisService.setBalance(playerId, playerBalance.add(betAmount.multiply(BigDecimal.valueOf(2))));
-                redisService.setBalance(state.getHousePlayerId(), houseBalance.subtract(betAmount));
-            }
-            case "win_double" -> {
-                redisService.setBalance(playerId, playerBalance.add(betAmount.multiply(BigDecimal.valueOf(3))));
-                redisService.setBalance(state.getHousePlayerId(), houseBalance.subtract(betAmount.multiply(BigDecimal.valueOf(2))));
-            }
-            case "lose_double" -> {
-                redisService.setBalance(playerId, playerBalance.subtract(betAmount));
-                redisService.setBalance(state.getHousePlayerId(), houseBalance.add(betAmount.multiply(BigDecimal.valueOf(2))));
-            }
-            default -> {
-                redisService.setBalance(state.getHousePlayerId(), houseBalance.add(betAmount));
-            }
-        }
+        // The bet was already deducted when it was placed, so the Player gets it back
+        // on top of their net; the House takes the opposite of the Player's net.
+        BigDecimal playerNet = PachucoRules.playerNet(outcome, betAmount);
+        balanceCache.addAfterCommit(playerId, playerNet.add(betAmount));
+        balanceCache.addAfterCommit(state.getHousePlayerId(), playerNet.negate());
 
         state.getRolledPlayers().add(playerId);
         state.getPlayerRolls().add(new RollInfo(playerId, playerModel.getDiceList(), playerModel.getComboName(),
-            outcome, PachucoRules.playerNet(outcome, betAmount)));
+            outcome, playerNet));
         redisService.setGameState(gameId, state);
 
         return outcome;

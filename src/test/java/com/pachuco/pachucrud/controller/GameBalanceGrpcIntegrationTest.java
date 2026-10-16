@@ -149,6 +149,47 @@ class GameBalanceGrpcIntegrationTest {
         assertEquals(before, balance(house));
     }
 
+    @Test
+    void concurrentSettlementsForOneHouseAreAllApplied() throws Exception {
+        int gameCount = 8;
+        String house = player(5000);
+        List<String> gameIds = new ArrayList<>();
+        List<String> players = new ArrayList<>();
+        for (int i = 0; i < gameCount; i++) {
+            String p = player(100);
+            String game = gameAtBetting(house, p);
+            bet(game, p, 10);
+            games.advanceToBankThrow(gameId(game));
+            games.houseRoll(Games.RollRequest.newBuilder().setGameId(game).setPlayerId(house).build());
+            games.advanceToPlayersThrow(gameId(game));
+            gameIds.add(game);
+            players.add(p);
+        }
+
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(gameCount);
+        try {
+            List<Future<?>> rolls = new ArrayList<>();
+            for (int i = 0; i < gameCount; i++) {
+                String game = gameIds.get(i);
+                String p = players.get(i);
+                rolls.add(pool.submit(() -> {
+                    start.await();
+                    games.playerRoll(Games.RollRequest.newBuilder().setGameId(game).setPlayerId(p).build());
+                    return null;
+                }));
+            }
+            start.countDown();
+            for (Future<?> f : rolls) {
+                f.get();
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+
+        assertCacheMatchesEvents(house);
+    }
+
     // ---- harness ----
 
     /** House rolls, then every Player who bet rolls in turn until the round completes. */

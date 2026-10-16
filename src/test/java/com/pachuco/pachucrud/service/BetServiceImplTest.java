@@ -79,7 +79,6 @@ class BetServiceImplTest {
         GameState state = state("PLAYERS_THROW");
         state.getBets().add(new GameState.BetInfo(alice, BigDecimal.TEN));
         when(redisService.getGameState(gameId)).thenReturn(Optional.of(state));
-        when(redisService.getBalance(any())).thenReturn(Optional.of(BigDecimal.valueOf(100)));
 
         // player pachuco vs house pair -> lose_double
         String outcome = betService.settleBet(gameId, alice,
