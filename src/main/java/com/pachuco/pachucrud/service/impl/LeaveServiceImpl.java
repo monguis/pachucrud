@@ -39,10 +39,22 @@ public class LeaveServiceImpl implements LeaveService {
 
         state.getWaitingPlayers().remove(playerId);
         state.getReadyPlayers().remove(playerId);
-        state.getTurnOrder().remove(playerId);
+        leaveRotation(state, playerId);
         redisService.setGameState(gameId, state);
 
         return state;
+    }
+
+    /** The current turn is an index into the Rotation, so it shifts with the seats ahead of it. */
+    private static void leaveRotation(GameState state, UUID playerId) {
+        int seat = state.getTurnOrder().indexOf(playerId);
+        if (seat < 0) {
+            return;
+        }
+        state.getTurnOrder().remove(seat);
+        if (seat < state.getCurrentTurn()) {
+            state.setCurrentTurn(state.getCurrentTurn() - 1);
+        }
     }
 
     private static boolean isSeated(GameState state, UUID playerId) {

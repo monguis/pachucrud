@@ -124,7 +124,70 @@ class GameLeaveGrpcIntegrationTest {
         assertEquals(List.of(creator), state(game).getWaitingPlayersList());
     }
 
+    @Test
+    void aPlayerWithoutABetWhoLeavesMidRoundDoesNotMoveTheTurn() {
+        String house = player(1000);
+        String alice = player(100);
+        String bob = player(100);
+        String carol = player(100);
+        String game = gameAtBetting(house, alice, bob, carol);
+        bet(game, bob, 10);
+        bet(game, carol, 10);
+        houseRolls(game, house);
+        assertEquals(bob, currentPlayer(game));
+
+        leave(game, alice);
+
+        assertEquals(List.of(house, bob, carol), state(game).getTurnOrderList());
+        assertEquals(bob, currentPlayer(game));
+    }
+
+    @Test
+    void aPlayerWhoLeavesTheRoundSummaryIsNotInTheNextLobby() {
+        String house = player(1000);
+        String alice = player(100);
+        String bob = player(100);
+        String game = gameAtBetting(house, alice, bob);
+        bet(game, alice, 10);
+        bet(game, bob, 10);
+        rollRound(game, house);
+
+        leave(game, bob);
+        games.advanceToNextRound(gameId(game));
+
+        Games.GameStateResponse lobby = state(game);
+        assertFalse(lobby.getTurnOrderList().contains(bob));
+        assertFalse(lobby.getWaitingPlayersList().contains(bob));
+    }
+
+    @Test
+    void aPlayerWhoComesBackJoinsAtTheEndOfTheRotation() {
+        String house = player(1000);
+        String alice = player(100);
+        String bob = player(100);
+        String game = gameAtBetting(house, alice, bob);
+
+        leave(game, alice);
+        join(game, alice);
+
+        assertEquals(List.of(house, bob, alice), state(game).getTurnOrderList());
+    }
+
     // ---- harness ----
+
+    private void houseRolls(String game, String house) {
+        games.advanceToBankThrow(gameId(game));
+        games.houseRoll(Games.RollRequest.newBuilder().setGameId(game).setPlayerId(house).build());
+        games.advanceToPlayersThrow(gameId(game));
+    }
+
+    private String currentPlayer(String game) {
+        return games.getCurrentTurn(gameId(game)).getCurrentPlayerId();
+    }
+
+    private void join(String game, String player) {
+        games.joinGame(Games.JoinGameRequest.newBuilder().setGameId(game).setPlayerId(player).build());
+    }
 
     /** House rolls, then every Player who bet rolls in turn until the round completes. */
     private void rollRound(String game, String house) {
