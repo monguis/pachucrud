@@ -6,6 +6,7 @@ import com.pachuco.pachucrud.repository.entity.GameEntity;
 import com.pachuco.pachucrud.service.BetService;
 import com.pachuco.pachucrud.service.GameService;
 import com.pachuco.pachucrud.service.GameStageService;
+import com.pachuco.pachucrud.service.LeaveService;
 import com.pachuco.pachucrud.service.RedisService;
 import com.pachuco.pachucrud.service.RollService;
 import com.pachuco.pachucrud.service.model.GameState;
@@ -32,16 +33,19 @@ public class GameController extends GameServiceGrpc.GameServiceImplBase {
     private final RollService rollService;
     private final RedisService redisService;
     private final GameRepository gameRepository;
+    private final LeaveService leaveService;
 
     public GameController(GameService gameService, GameStageService gameStageService,
                           BetService betService, RollService rollService,
-                          RedisService redisService, GameRepository gameRepository) {
+                          RedisService redisService, GameRepository gameRepository,
+                          LeaveService leaveService) {
         this.gameService = gameService;
         this.gameStageService = gameStageService;
         this.betService = betService;
         this.rollService = rollService;
         this.redisService = redisService;
         this.gameRepository = gameRepository;
+        this.leaveService = leaveService;
     }
 
     @Override
@@ -308,6 +312,16 @@ public class GameController extends GameServiceGrpc.GameServiceImplBase {
         GameState state = gameStageService.failLobby(gameId);
 
         respondOk(responseObserver, Optional.of(state), "LOBBY_FAILED");
+    }
+
+    @Override
+    public void leaveGame(Games.LeaveGameRequest request,
+                          StreamObserver<Games.GameResponse> responseObserver) {
+        UUID gameId = UUID.fromString(request.getGameId());
+        UUID playerId = UUID.fromString(request.getPlayerId());
+        GameState state = leaveService.leaveGame(gameId, playerId);
+
+        respondOk(responseObserver, Optional.of(state), "PLAYER_LEFT");
     }
 
     @Override

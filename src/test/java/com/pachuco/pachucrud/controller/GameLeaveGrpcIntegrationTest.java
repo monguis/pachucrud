@@ -1,0 +1,188 @@
+package com.pachuco.pachucrud.controller;
+
+import com.pachuco.pachucrud.service.RedisService;
+import io.grpc.ManagedChannel;
+import io.grpc.ManagedChannelBuilder;
+import java.util.List;
+import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.grpc.test.autoconfigure.LocalGrpcPort;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
+import pachuco_proto.GameServiceGrpc;
+import pachuco_proto.Games;
+import pachuco_proto.UserGrpc;
+import pachuco_proto.Users;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+
+/**
+ * Players Leave a game over real gRPC against real Postgres and real Redis: they give
+ * up their seat, and the table stops waiting for them.
+ */
+@SpringBootTest(properties = {
+    "spring.grpc.server.port=0",
+    "spring.jpa.show-sql=false",
+    "test-players.enabled=true"
+})
+@Testcontainers
+class GameLeaveGrpcIntegrationTest {
+
+    @Container
+    @ServiceConnection
+    static PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:18-alpine");
+
+    @Container
+    @ServiceConnection(name = "redis")
+    static GenericContainer<?> redis = new GenericContainer<>("redis:7-alpine").withExposedPorts(6379);
+
+    @Autowired RedisService redisService;
+
+    @LocalGrpcPort int port;
+
+    private ManagedChannel channel;
+    private UserGrpc.UserBlockingStub users;
+    private GameServiceGrpc.GameServiceBlockingStub games;
+
+    @BeforeEach
+    void connect() {
+        channel = ManagedChannelBuilder.forAddress("localhost", port).usePlaintext().build();
+        users = UserGrpc.newBlockingStub(channel);
+        games = GameServiceGrpc.newBlockingStub(channel);
+    }
+
+    @AfterEach
+    void disconnect() {
+        channel.shutdownNow();
+    }
+
+    @Test
+    void aJoinedPlayerWhoLeavesTheLobbyLosesTheirSeat() {
+        String creator = player(1000);
+        String alice = player(100);
+        String game = createGame(creator, alice);
+
+        leave(game, alice);
+
+        assertFalse(state(game).getWaitingPlayersList().contains(alice));
+    }
+
+    @Test
+    void aReadyPlayerWhoLeavesALaterLobbyLosesTheirPlaceInTheRotation() {
+        String house = player(1000);
+        String alice = player(100);
+        String bob = player(100);
+        String game = gameAtBetting(house, alice, bob);
+        bet(game, alice, 10);
+        bet(game, bob, 10);
+        rollRound(game, house);
+        games.advanceToNextRound(gameId(game));
+        markReady(game, alice);
+
+        leave(game, alice);
+
+        Games.GameStateResponse after = state(game);
+        assertFalse(after.getReadyPlayersList().contains(alice));
+        assertFalse(after.getTurnOrderList().contains(alice));
+    }
+
+    @Test
+    void aLeaveSurvivesRebuildingTheGameFromEvents() {
+        String creator = player(1000);
+        String alice = player(100);
+        String bob = player(100);
+        String game = createGame(creator, alice, bob);
+
+        leave(game, alice);
+        redisService.deleteGameState(UUID.fromString(game));
+
+        Games.GameStateResponse rebuilt = state(game);
+        assertFalse(rebuilt.getWaitingPlayersList().contains(alice));
+        assertEquals(List.of(creator, bob), rebuilt.getWaitingPlayersList());
+    }
+
+    @Test
+    void leavingAGameYouAreNotSeatedInChangesNothing() {
+        String creator = player(1000);
+        String alice = player(100);
+        String stranger = player(100);
+        String game = createGame(creator, alice);
+
+        leave(game, stranger);
+        leave(game, alice);
+        leave(game, alice);
+        redisService.deleteGameState(UUID.fromString(game));
+
+        assertEquals(List.of(creator), state(game).getWaitingPlayersList());
+    }
+
+    // ---- harness ----
+
+    /** House rolls, then every Player who bet rolls in turn until the round completes. */
+    private void rollRound(String game, String house) {
+        games.advanceToBankThrow(gameId(game));
+        games.houseRoll(Games.RollRequest.newBuilder().setGameId(game).setPlayerId(house).build());
+        games.advanceToPlayersThrow(gameId(game));
+        while (!"COMPLETED".equals(state(game).getRoundStatus())) {
+            String next = games.getCurrentTurn(gameId(game)).getCurrentPlayerId();
+            games.playerRoll(Games.RollRequest.newBuilder().setGameId(game).setPlayerId(next).build());
+        }
+    }
+
+    /** Creates a game with {@code house} as the House and drives it to the betting stage. */
+    private String gameAtBetting(String house, String... players) {
+        String game = createGame(house, players);
+        games.advanceToEnoughPlayers(gameId(game));
+        games.advanceToGameStart(Games.AdvanceToGameStartRequest.newBuilder()
+            .setGameId(game).addPlayerOrder(house).addAllPlayerOrder(List.of(players)).build());
+        games.startRound(Games.StartRoundRequest.newBuilder()
+            .setGameId(game).setHousePlayerId(house).setBetLimit(50).build());
+        games.advanceToPlayersBetSetting(gameId(game));
+        return game;
+    }
+
+    private void bet(String game, String player, double amount) {
+        games.placeBet(Games.PlaceBetRequest.newBuilder()
+            .setGameId(game).setPlayerId(player).setAmount(amount).build());
+    }
+
+    private void markReady(String game, String player) {
+        games.markPlayerReady(Games.MarkPlayerReadyRequest.newBuilder()
+            .setGameId(game).setPlayerId(player).build());
+    }
+
+    private String player(double startingBalance) {
+        return users.addTestPlayer(Users.UserRequest.newBuilder()
+            .setBalance((float) startingBalance).build()).getId();
+    }
+
+    private String createGame(String creator, String... players) {
+        String game = games.createGame(Games.CreateGameRequest.newBuilder()
+            .setCreatorId(creator).build()).getId();
+        for (String p : players) {
+            games.joinGame(Games.JoinGameRequest.newBuilder().setGameId(game).setPlayerId(p).build());
+        }
+        return game;
+    }
+
+    private void leave(String game, String player) {
+        games.leaveGame(Games.LeaveGameRequest.newBuilder()
+            .setGameId(game).setPlayerId(player).build());
+    }
+
+    private Games.GameStateResponse state(String game) {
+        return games.getGameState(gameId(game));
+    }
+
+    private static Games.GameIdRequest gameId(String game) {
+        return Games.GameIdRequest.newBuilder().setGameId(game).build();
+    }
+}

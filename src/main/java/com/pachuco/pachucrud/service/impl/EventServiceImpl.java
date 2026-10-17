@@ -274,6 +274,13 @@ public class EventServiceImpl implements EventService {
                             state.getRolledPlayers().add(event.getActorId());
                         }
                     }
+                    case PLAYER_LEFT -> {
+                        if (event.getActorId() != null) {
+                            state.getWaitingPlayers().remove(event.getActorId());
+                            state.getReadyPlayers().remove(event.getActorId());
+                            state.getTurnOrder().remove(event.getActorId());
+                        }
+                    }
                     case ROUND_COMPLETED -> {
                         state.setRoundStatus("COMPLETED");
                     }

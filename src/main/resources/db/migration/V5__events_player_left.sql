@@ -1,0 +1,6 @@
+-- A player who Leaves a game is recorded by a PLAYER_LEFT event.
+ALTER TABLE events DROP CONSTRAINT IF EXISTS events_event_type_check;
+ALTER TABLE events ADD CONSTRAINT events_event_type_check
+    CHECK (event_type IN ('GAME_CREATED', 'PLAYER_JOINED', 'PLAYER_READY', 'ROUND_STARTED',
+        'BET_LIMIT_SET', 'BET_PLACED', 'HOUSE_ROLLED', 'PLAYER_ROLLED', 'ROUND_COMPLETED',
+        'GAME_COMPLETED', 'GAME_CANCELLED', 'GAME_ADVANCED', 'PLAYER_LEFT', 'DEPOSIT', 'WITHDRAWAL'));

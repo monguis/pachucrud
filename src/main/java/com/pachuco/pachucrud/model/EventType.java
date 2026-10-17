@@ -13,6 +13,7 @@ public enum EventType {
     GAME_COMPLETED,
     GAME_CANCELLED,
     GAME_ADVANCED,
+    PLAYER_LEFT,
     DEPOSIT,
     WITHDRAWAL
 }
