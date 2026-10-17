@@ -1,6 +1,9 @@
 package com.pachuco.pachucrud.service;
 
+import com.pachuco.pachucrud.model.EventType;
+import com.pachuco.pachucrud.model.GameStatus;
 import com.pachuco.pachucrud.repository.GameRepository;
+import com.pachuco.pachucrud.repository.entity.GameEntity;
 import com.pachuco.pachucrud.service.impl.GameStageServiceImpl;
 import com.pachuco.pachucrud.service.model.GameState;
 import java.math.BigDecimal;
@@ -15,9 +18,15 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -107,6 +116,76 @@ class GameStageServiceImplTest {
 
         assertEquals(house, result.getHousePlayerId());
         assertEquals(List.of(house, alice, bob, carol), result.getTurnOrder());
+    }
+
+    private GameState lobbyState(String roundStatus, String status) {
+        GameState state = new GameState();
+        state.setGameId(gameId);
+        state.setStatus(status);
+        state.setRoundStatus(roundStatus);
+        state.getWaitingPlayers().add(house);
+        return state;
+    }
+
+    private GameEntity gameEntity(GameStatus status) {
+        GameEntity game = new GameEntity();
+        game.setId(gameId);
+        game.setStatus(status);
+        return game;
+    }
+
+    @Test
+    void failLobby_cancelsGameThatNeverPlayedARound() {
+        GameState state = lobbyState("INIT", "PENDING");
+        GameEntity game = gameEntity(GameStatus.PENDING);
+        when(redisService.getGameState(gameId)).thenReturn(Optional.of(state));
+        when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+
+        GameState result = stageService.failLobby(gameId);
+
+        assertEquals("CANCELLED", result.getStatus());
+        assertEquals(GameStatus.CANCELLED, game.getStatus());
+        assertNotNull(game.getCompletedAt());
+        verify(gameRepository).save(game);
+        verify(eventService).writeEvent(eq(gameId), eq(EventType.GAME_CANCELLED), isNull(), anyMap());
+        verify(redisService).setGameState(gameId, state);
+    }
+
+    @Test
+    void failLobby_completesGameThatAlreadyPlayedRounds() {
+        GameState state = lobbyState("ENOUGH_PLAYERS", "ACTIVE");
+        GameEntity game = gameEntity(GameStatus.ACTIVE);
+        when(redisService.getGameState(gameId)).thenReturn(Optional.of(state));
+        when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+
+        GameState result = stageService.failLobby(gameId);
+
+        assertEquals("COMPLETED", result.getStatus());
+        assertEquals(GameStatus.COMPLETED, game.getStatus());
+        assertNotNull(game.getCompletedAt());
+        verify(eventService).writeEvent(eq(gameId), eq(EventType.GAME_COMPLETED), isNull(), anyMap());
+        verify(redisService).setGameState(gameId, state);
+    }
+
+    @Test
+    void failLobby_rejectsGameOutsideTheLobby() {
+        GameState state = lobbyState("PLAYERS_THROW", "ACTIVE");
+        when(redisService.getGameState(gameId)).thenReturn(Optional.of(state));
+
+        assertThrows(IllegalStateException.class, () -> stageService.failLobby(gameId));
+        verify(gameRepository, never()).save(any());
+    }
+
+    @Test
+    void failLobby_rejectsGameThatAlreadyEnded() {
+        GameState state = lobbyState("INIT", "CANCELLED");
+        GameEntity game = gameEntity(GameStatus.CANCELLED);
+        when(redisService.getGameState(gameId)).thenReturn(Optional.of(state));
+        when(gameRepository.findById(gameId)).thenReturn(Optional.of(game));
+
+        assertThrows(IllegalStateException.class, () -> stageService.failLobby(gameId));
+        assertEquals(GameStatus.CANCELLED, game.getStatus());
+        verify(gameRepository, never()).save(any());
     }
 
     @Test

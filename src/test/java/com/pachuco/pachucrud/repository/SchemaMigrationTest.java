@@ -1,6 +1,10 @@
 package com.pachuco.pachucrud.repository;
 
+import com.pachuco.pachucrud.model.EventType;
+import com.pachuco.pachucrud.model.GameStatus;
 import com.pachuco.pachucrud.model.UserRole;
+import com.pachuco.pachucrud.repository.entity.EventEntity;
+import com.pachuco.pachucrud.repository.entity.GameEntity;
 import com.pachuco.pachucrud.repository.entity.UserEntity;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -37,13 +41,15 @@ class SchemaMigrationTest {
     static PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:18-alpine");
 
     @Autowired UserRepository userRepository;
+    @Autowired GameRepository gameRepository;
+    @Autowired EventRepository eventRepository;
     @Autowired JdbcTemplate jdbc;
 
     @Test
     void freshDatabaseMigratesAndValidates() {
         Integer applied = jdbc.queryForObject(
             "SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class);
-        assertEquals(3, applied);
+        assertEquals(4, applied);
     }
 
     @Test
@@ -54,6 +60,26 @@ class SchemaMigrationTest {
         user.setRoles(List.of(UserRole.values()));
 
         assertNotNull(userRepository.saveAndFlush(user).getId());
+    }
+
+    @Test
+    void persistsCancelledGameAndItsEvent() {
+        UserEntity creator = new UserEntity();
+        creator.setAuthId("auth|" + UUID.randomUUID());
+        creator.setEmail(UUID.randomUUID() + "@example.com");
+        creator = userRepository.saveAndFlush(creator);
+
+        GameEntity game = new GameEntity();
+        game.setCreator(creator);
+        game.setStatus(GameStatus.CANCELLED);
+        game = gameRepository.saveAndFlush(game);
+
+        EventEntity event = new EventEntity();
+        event.setGame(game);
+        event.setEventType(EventType.GAME_CANCELLED);
+        event.setData("{}");
+
+        assertNotNull(eventRepository.saveAndFlush(event).getId());
     }
 
     @Test
@@ -69,8 +95,10 @@ class SchemaMigrationTest {
                 url, postgres.getUsername(), postgres.getPassword());
              Statement st = legacy.createStatement()) {
             st.execute("CREATE TABLE users (id uuid PRIMARY KEY)");
+            st.execute("CREATE TABLE games (id uuid PRIMARY KEY, status varchar(255),"
+                + " CONSTRAINT games_status_check CHECK (status IN ('PENDING', 'ACTIVE', 'COMPLETED')))");
             st.execute("CREATE TABLE events (id uuid PRIMARY KEY, game_id uuid, actor_id uuid,"
-                + " round_number integer)");
+                + " round_number integer, event_type varchar(50))");
             st.execute("CREATE TABLE user_roles (user_id uuid NOT NULL REFERENCES users(id),"
                 + " role varchar(255), CONSTRAINT user_roles_role_check"
                 + " CHECK (role IN ('PLAYER', 'ADMIN')))");

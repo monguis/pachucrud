@@ -14,4 +14,5 @@ public interface GameStageService {
     GameState advanceToNextRound(UUID gameId);
     GameState markPlayerReady(UUID gameId, UUID playerId);
     GameState getCurrentTurn(UUID gameId);
+    GameState failLobby(UUID gameId);
 }

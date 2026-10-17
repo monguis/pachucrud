@@ -318,6 +318,9 @@ public class EventServiceImpl implements EventService {
                     case GAME_COMPLETED -> {
                         state.setStatus("COMPLETED");
                     }
+                    case GAME_CANCELLED -> {
+                        state.setStatus("CANCELLED");
+                    }
                     default -> {}
                 }
             } catch (Exception e) {

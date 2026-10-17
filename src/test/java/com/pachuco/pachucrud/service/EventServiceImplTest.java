@@ -80,6 +80,17 @@ class EventServiceImplTest {
     }
 
     @Test
+    void replay_restoresCancelledGame() {
+        List<EventEntity> events = List.of(
+            event(EventType.GAME_CREATED, house, "{}"),
+            event(EventType.GAME_CANCELLED, null, "{}"));
+
+        GameState state = eventService.replayEvents(events);
+
+        assertEquals("CANCELLED", state.getStatus());
+    }
+
+    @Test
     void replay_appendsMidRoundJoinerToTurnOrder() {
         List<EventEntity> events = List.of(
             event(EventType.GAME_CREATED, house, "{}"),

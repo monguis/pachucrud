@@ -79,6 +79,13 @@ class GameServiceImplTest {
     }
 
     @Test
+    void joinGame_rejectsCancelledGame() {
+        when(gameRepository.findById(gameId)).thenReturn(Optional.of(gameWithStatus(GameStatus.CANCELLED)));
+
+        assertThrows(IllegalStateException.class, () -> gameService.joinGame(gameId, dave));
+    }
+
+    @Test
     void joinGame_allowsActiveGame() {
         GameState state = activeState();
         when(gameRepository.findById(gameId)).thenReturn(Optional.of(gameWithStatus(GameStatus.ACTIVE)));

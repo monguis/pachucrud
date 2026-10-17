@@ -98,7 +98,7 @@ public class GameServiceImpl implements GameService {
         GameEntity game = gameRepository.findById(gameId)
             .orElseThrow(() -> new NotFoundException("Game not found: " + gameId));
 
-        if (game.getStatus() == GameStatus.COMPLETED) {
+        if (game.getStatus() == GameStatus.COMPLETED || game.getStatus() == GameStatus.CANCELLED) {
             throw new IllegalStateException("Game is not joinable");
         }
 

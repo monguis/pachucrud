@@ -56,7 +56,9 @@ public class GameController extends GameServiceGrpc.GameServiceImplBase {
                 continue;
             }
             if ("COMPLETED".equals(state.get().getStatus())
-                    || g.getStatus() == com.pachuco.pachucrud.model.GameStatus.COMPLETED) {
+                    || "CANCELLED".equals(state.get().getStatus())
+                    || g.getStatus() == com.pachuco.pachucrud.model.GameStatus.COMPLETED
+                    || g.getStatus() == com.pachuco.pachucrud.model.GameStatus.CANCELLED) {
                 continue;
             }
             int totalPlayers = state.get().getTurnOrder().size();
@@ -297,6 +299,15 @@ public class GameController extends GameServiceGrpc.GameServiceImplBase {
         gameService.completeGame(gameId);
 
         respondOk(responseObserver, gameService.getGameState(gameId), "GAME_COMPLETED");
+    }
+
+    @Override
+    public void failLobby(Games.GameIdRequest request,
+                          StreamObserver<Games.GameResponse> responseObserver) {
+        UUID gameId = UUID.fromString(request.getGameId());
+        GameState state = gameStageService.failLobby(gameId);
+
+        respondOk(responseObserver, Optional.of(state), "LOBBY_FAILED");
     }
 
     @Override

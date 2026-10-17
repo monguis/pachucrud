@@ -304,6 +304,40 @@ public class GameStageServiceImpl implements GameStageService {
         return state;
     }
 
+    @Override
+    @Transactional
+    public GameState failLobby(UUID gameId) {
+        GameState state = redisService.getGameState(gameId)
+            .orElseThrow(() -> new NotFoundException("Game state not found"));
+
+        if (!"INIT".equals(state.getRoundStatus()) && !"ENOUGH_PLAYERS".equals(state.getRoundStatus())) {
+            throw new IllegalStateException("Game is not in the Lobby");
+        }
+
+        GameEntity game = gameRepository.findById(gameId)
+            .orElseThrow(() -> new NotFoundException("Game not found"));
+
+        if (game.getStatus() == GameStatus.COMPLETED || game.getStatus() == GameStatus.CANCELLED) {
+            throw new IllegalStateException("Game has already ended");
+        }
+
+        // a game that never played a round is cancelled; one that did simply ends
+        boolean neverPlayed = game.getStatus() == GameStatus.PENDING;
+        GameStatus endStatus = neverPlayed ? GameStatus.CANCELLED : GameStatus.COMPLETED;
+        EventType endEvent = neverPlayed ? EventType.GAME_CANCELLED : EventType.GAME_COMPLETED;
+
+        game.setStatus(endStatus);
+        game.setCompletedAt(Instant.now());
+        gameRepository.save(game);
+
+        eventService.writeEvent(gameId, endEvent, null, new HashMap<>());
+
+        state.setStatus(endStatus.name());
+        redisService.setGameState(gameId, state);
+
+        return state;
+    }
+
     private List<UUID> rotateToNewHouse(List<UUID> order, UUID oldHouse, UUID newHouse) {
         List<UUID> rotated = new ArrayList<>();
         int newHouseIdx = order.indexOf(newHouse);
