@@ -161,7 +161,7 @@ public class EventServiceImpl implements EventService {
                             default -> {}
                         }
                     }
-                    case DEPOSIT -> {
+                    case DEPOSIT, BET_VOIDED -> {
                         Object amt = data.get("amount");
                         if (amt instanceof Number n) {
                             balance = balance.add(BigDecimal.valueOf(n.doubleValue()));
@@ -280,7 +280,17 @@ public class EventServiceImpl implements EventService {
                         if (event.getActorId() != null) {
                             state.getWaitingPlayers().remove(event.getActorId());
                             state.getReadyPlayers().remove(event.getActorId());
-                            state.getTurnOrder().remove(event.getActorId());
+                            // a House that left after rolling keeps seat 0 until the round ends
+                            if (Boolean.TRUE.equals(data.get("keepsSeat"))) {
+                                state.getLeftPlayers().add(event.getActorId());
+                            } else {
+                                state.getTurnOrder().remove(event.getActorId());
+                            }
+                        }
+                    }
+                    case BET_VOIDED -> {
+                        if (event.getActorId() != null) {
+                            state.getBets().removeIf(b -> b.getPlayerId().equals(event.getActorId()));
                         }
                     }
                     case ROUND_COMPLETED -> {
@@ -305,6 +315,7 @@ public class EventServiceImpl implements EventService {
                             if (!order.isEmpty()) {
                                 state.setTurnOrder(order);
                                 if ("ENOUGH_PLAYERS".equals(s)) {
+                                    state.getLeftPlayers().clear();
                                     state.getWaitingPlayers().clear();
                                     state.getWaitingPlayers().addAll(order);
                                     state.getReadyPlayers().clear();

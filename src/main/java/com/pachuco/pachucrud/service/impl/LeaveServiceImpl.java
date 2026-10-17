@@ -8,14 +8,22 @@ import com.pachuco.pachucrud.service.GameStageService;
 import com.pachuco.pachucrud.service.LeaveService;
 import com.pachuco.pachucrud.service.RedisService;
 import com.pachuco.pachucrud.service.model.GameState;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class LeaveServiceImpl implements LeaveService {
+
+    // Round stages in which the House holds the seat it is judged from.
+    private static final Set<String> ROUND_STAGES =
+        Set.of("GAME_START", "BET_SETTING", "PLAYERS_BET_SETTING", "BANK_THROW", "PLAYERS_THROW", "COMPLETED");
 
     private final EventService eventService;
     private final RedisService redisService;
@@ -40,14 +48,20 @@ public class LeaveServiceImpl implements LeaveService {
             return state;
         }
 
+        boolean isHouse = ROUND_STAGES.contains(state.getRoundStatus())
+            && playerId.equals(state.getHousePlayerId());
+        if (isHouse && state.getHouseDice().isEmpty()) {
+            return abandonRound(gameId, state, playerId);
+        }
+        if (isHouse) {
+            return houseLeavesAfterRolling(gameId, state, playerId);
+        }
+
         // placing a Bet commits the player to it
         betService.forfeitBet(gameId, playerId);
         state = redisService.getGameState(gameId).orElseThrow();
 
-        Map<String, Object> data = new HashMap<>();
-        data.put("playerId", playerId.toString());
-        eventService.writeEvent(gameId, EventType.PLAYER_LEFT, playerId, data);
-
+        recordLeave(gameId, playerId, false);
         state.getWaitingPlayers().remove(playerId);
         state.getReadyPlayers().remove(playerId);
         leaveRotation(state, playerId);
@@ -65,6 +79,71 @@ public class LeaveServiceImpl implements LeaveService {
         return state;
     }
 
+    /**
+     * With no House Throw there is nothing to settle against: every Bet not yet settled
+     * is voided, and the next round's Lobby starts with the next player as House.
+     */
+    private GameState abandonRound(UUID gameId, GameState state, UUID house) {
+        for (UUID bettor : state.getBets().stream().map(GameState.BetInfo::getPlayerId).toList()) {
+            betService.voidBet(gameId, bettor);
+        }
+        state = redisService.getGameState(gameId).orElseThrow();
+
+        recordLeave(gameId, house, false);
+        List<UUID> order = new ArrayList<>(state.getTurnOrder());
+        order.remove(house);
+        UUID newHouse = order.isEmpty() ? null : order.get(0);
+
+        Map<String, Object> abandoned = new HashMap<>();
+        abandoned.put("roundNumber", state.getCurrentRound());
+        abandoned.put("housePlayerId", house.toString());
+        eventService.writeEvent(gameId, EventType.ROUND_ABANDONED, null, abandoned);
+
+        Map<String, Object> advanced = new HashMap<>();
+        advanced.put("targetStage", "ENOUGH_PLAYERS");
+        advanced.put("housePlayerId", newHouse != null ? newHouse.toString() : null);
+        advanced.put("playerOrder", order.stream().map(UUID::toString).toList());
+        eventService.writeEvent(gameId, EventType.GAME_ADVANCED, null, advanced);
+
+        state.setTurnOrder(order);
+        state.setHousePlayerId(newHouse);
+        state.getLeftPlayers().clear();
+        state.getBets().clear();
+        state.getPlayerRolls().clear();
+        state.getRolledPlayers().clear();
+        state.setHouseDice(new ArrayList<>());
+        state.setBetLimit(null);
+        state.setCurrentTurn(0);
+        state.getWaitingPlayers().clear();
+        state.getWaitingPlayers().addAll(order);
+        state.getReadyPlayers().clear();
+        state.setRoundStatus("ENOUGH_PLAYERS");
+        state.setStatusSetTime(Instant.now());
+        redisService.setGameState(gameId, state);
+
+        return state;
+    }
+
+    /**
+     * The House's Throw stands, so it keeps seat 0 and the round settles against it;
+     * the seat passes on when the next round starts.
+     */
+    private GameState houseLeavesAfterRolling(UUID gameId, GameState state, UUID house) {
+        recordLeave(gameId, house, true);
+        state.getLeftPlayers().add(house);
+        redisService.setGameState(gameId, state);
+        return state;
+    }
+
+    private void recordLeave(UUID gameId, UUID playerId, boolean keepsSeat) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("playerId", playerId.toString());
+        if (keepsSeat) {
+            data.put("keepsSeat", true);
+        }
+        eventService.writeEvent(gameId, EventType.PLAYER_LEFT, playerId, data);
+    }
+
     /** The current turn is an index into the Rotation, so it shifts with the seats ahead of it. */
     private static void leaveRotation(GameState state, UUID playerId) {
         int seat = state.getTurnOrder().indexOf(playerId);
@@ -78,6 +157,9 @@ public class LeaveServiceImpl implements LeaveService {
     }
 
     private static boolean isSeated(GameState state, UUID playerId) {
+        if (state.getLeftPlayers().contains(playerId)) {
+            return false;
+        }
         return state.getWaitingPlayers().contains(playerId)
             || state.getReadyPlayers().contains(playerId)
             || state.getTurnOrder().contains(playerId);

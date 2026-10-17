@@ -140,6 +140,38 @@ public class BetServiceImpl implements BetService {
         redisService.setGameState(gameId, state);
     }
 
+    @Override
+    @Transactional
+    public void voidBet(UUID gameId, UUID playerId) {
+        GameState state = redisService.getGameState(gameId)
+            .orElseThrow(() -> new NotFoundException("Game state not found in Redis"));
+
+        if (state.getRolledPlayers().contains(playerId)) {
+            return;
+        }
+        BetInfo bet = state.getBets().stream()
+            .filter(b -> b.getPlayerId().equals(playerId))
+            .findFirst()
+            .orElse(null);
+        if (bet == null) {
+            return;
+        }
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("amount", bet.getAmount());
+        data.put("playerId", playerId.toString());
+        data.put("round", state.getCurrentRound());
+
+        eventService.writeEventWithTransaction(
+            gameId, EventType.BET_VOIDED, playerId, data,
+            playerId, TransactionType.BET_RELEASE, bet.getAmount());
+
+        // the hold taken when the Bet was placed comes back in full
+        balanceCache.addAfterCommit(playerId, bet.getAmount());
+        state.getBets().remove(bet);
+        redisService.setGameState(gameId, state);
+    }
+
     /** Records a settled Bet and moves the money; the caller records the roll it settled. */
     private BigDecimal settle(UUID gameId, GameState state, BetInfo bet, String outcome,
                               Map<String, Object> data) {

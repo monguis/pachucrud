@@ -74,6 +74,9 @@ public class GameState {
     private List<UUID> rolledPlayers = new ArrayList<>();
     private List<UUID> waitingPlayers = new ArrayList<>();
     private List<UUID> readyPlayers = new ArrayList<>();
+    // Players who left during this round but still hold a seat: a House that left
+    // after rolling keeps seat 0 so the round can settle against its Throw.
+    private List<UUID> leftPlayers = new ArrayList<>();
     private int currentTurn;
     private boolean needsShuffling;
     private Instant statusSetTime;
@@ -141,6 +144,8 @@ public class GameState {
     public void setWaitingPlayers(List<UUID> waitingPlayers) { this.waitingPlayers = waitingPlayers; }
     public List<UUID> getReadyPlayers() { return readyPlayers; }
     public void setReadyPlayers(List<UUID> readyPlayers) { this.readyPlayers = readyPlayers; }
+    public List<UUID> getLeftPlayers() { return leftPlayers; }
+    public void setLeftPlayers(List<UUID> leftPlayers) { this.leftPlayers = leftPlayers != null ? leftPlayers : new ArrayList<>(); }
     public int getCurrentTurn() { return currentTurn; }
     public void setCurrentTurn(int currentTurn) { this.currentTurn = currentTurn; }
     public boolean isNeedsShuffling() { return needsShuffling; }

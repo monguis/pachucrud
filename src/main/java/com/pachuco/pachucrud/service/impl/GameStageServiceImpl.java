@@ -229,7 +229,11 @@ public class GameStageServiceImpl implements GameStageService {
         UUID nextToRoll = order.size() > 1 ? order.get(1) : null;
         UUID newHouse = currentHouse;
 
-        if (nextToRoll != null) {
+        if (state.getLeftPlayers().contains(currentHouse)) {
+            // the House left after rolling: the next player in the Rotation takes it
+            order.remove(currentHouse);
+            newHouse = order.isEmpty() ? null : order.get(0);
+        } else if (nextToRoll != null) {
             String outcome = state.getPlayerRolls().stream()
                 .filter(r -> r.getPlayerId().equals(nextToRoll))
                 .map(RollInfo::getOutcome)
@@ -247,10 +251,11 @@ public class GameStageServiceImpl implements GameStageService {
 
         Map<String, Object> data = new HashMap<>();
         data.put("targetStage", "ENOUGH_PLAYERS");
-        data.put("housePlayerId", newHouse.toString());
+        data.put("housePlayerId", newHouse != null ? newHouse.toString() : null);
         data.put("playerOrder", order.stream().map(UUID::toString).toList());
         eventService.writeEvent(gameId, EventType.GAME_ADVANCED, null, data);
 
+        state.getLeftPlayers().clear();
         state.getBets().clear();
         state.getPlayerRolls().clear();
         state.getRolledPlayers().clear();
