@@ -23,6 +23,7 @@ import pachuco_proto.Users;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Players Leave a game over real gRPC against real Postgres and real Redis: they give
@@ -173,7 +174,88 @@ class GameLeaveGrpcIntegrationTest {
         assertEquals(List.of(house, bob, alice), state(game).getTurnOrderList());
     }
 
+    @Test
+    void aBettorWhoLeavesBeforeRollingForfeitsAsAPachuco() {
+        String house = player(1000);
+        String alice = player(100);
+        String bob = player(100);
+        String game = gameAtBetting(house, alice, bob);
+        bet(game, alice, 10);
+
+        leave(game, alice);
+
+        assertEquals(80.0, balance(alice));
+        assertEquals(1020.0, balance(house));
+        assertCacheMatchesEvents(house, alice);
+    }
+
+    @Test
+    void aForfeitShowsWithoutDiceAndSurvivesRebuildingTheGame() {
+        String house = player(1000);
+        String alice = player(100);
+        String bob = player(100);
+        String game = gameAtBetting(house, alice, bob);
+        bet(game, alice, 10);
+
+        leave(game, alice);
+        redisService.deleteGameState(UUID.fromString(game));
+
+        Games.RollInfo forfeit = state(game).getPlayerRollsList().stream()
+            .filter(r -> r.getPlayerId().equals(alice))
+            .findFirst().orElseThrow();
+        assertTrue(forfeit.getForfeit());
+        assertEquals("lose_double", forfeit.getOutcome());
+        assertTrue(forfeit.getDiceList().isEmpty());
+    }
+
+    @Test
+    void theBettorWhoseTurnItIsLeavingPassesTheTurnToTheNextBettor() {
+        String house = player(1000);
+        String alice = player(100);
+        String bob = player(100);
+        String carol = player(100);
+        String game = gameAtBetting(house, alice, bob, carol);
+        bet(game, alice, 10);
+        bet(game, carol, 10);
+        houseRolls(game, house);
+        assertEquals(alice, currentPlayer(game));
+
+        leave(game, alice);
+
+        assertEquals(carol, currentPlayer(game));
+    }
+
+    @Test
+    void theLastBettorLeavingCompletesTheRound() {
+        String house = player(1000);
+        String alice = player(100);
+        String bob = player(100);
+        String game = gameAtBetting(house, alice, bob);
+        bet(game, alice, 10);
+        bet(game, bob, 10);
+        houseRolls(game, house);
+        games.playerRoll(Games.RollRequest.newBuilder().setGameId(game).setPlayerId(alice).build());
+
+        leave(game, bob);
+
+        assertEquals("COMPLETED", state(game).getRoundStatus());
+    }
+
     // ---- harness ----
+
+    private double balance(String userId) {
+        return users.getBalance(Users.UserIdRequest.newBuilder().setId(userId).build()).getBalance();
+    }
+
+    /** The cached balance must equal what a cache miss would recompute from events. */
+    private void assertCacheMatchesEvents(String... userIds) {
+        for (String id : userIds) {
+            double cached = balance(id);
+            redisService.deleteBalance(UUID.fromString(id));
+            double recomputed = balance(id);
+            assertEquals(recomputed, cached, "cached balance drifted from events for " + id);
+        }
+    }
 
     private void houseRolls(String game, String house) {
         games.advanceToBankThrow(gameId(game));

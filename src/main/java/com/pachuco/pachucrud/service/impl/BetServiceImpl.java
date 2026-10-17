@@ -92,17 +92,63 @@ public class BetServiceImpl implements BetService {
             .findFirst()
             .orElseThrow(() -> new IllegalStateException("No bet found for player " + playerId));
 
-        BigDecimal betAmount = bet.getAmount();
         String outcome = resolveOutcome(houseModel, playerModel);
 
         Map<String, Object> data = new HashMap<>();
-        data.put("amount", betAmount);
-        data.put("playerId", playerId.toString());
-        data.put("houseId", state.getHousePlayerId().toString());
         data.put("houseDice", houseModel.getDiceList());
         data.put("playerDice", playerModel.getDiceList());
         data.put("houseCombo", houseModel.getComboName());
         data.put("playerCombo", playerModel.getComboName());
+
+        BigDecimal playerNet = settle(gameId, state, bet, outcome, data);
+        state.getPlayerRolls().add(new RollInfo(playerId, playerModel.getDiceList(), playerModel.getComboName(),
+            outcome, playerNet));
+        redisService.setGameState(gameId, state);
+
+        return outcome;
+    }
+
+    @Override
+    @Transactional
+    public void forfeitBet(UUID gameId, UUID playerId) {
+        GameState state = redisService.getGameState(gameId)
+            .orElseThrow(() -> new NotFoundException("Game state not found in Redis"));
+
+        if (state.getRolledPlayers().contains(playerId)) {
+            return;
+        }
+        BetInfo bet = state.getBets().stream()
+            .filter(b -> b.getPlayerId().equals(playerId))
+            .findFirst()
+            .orElse(null);
+        if (bet == null) {
+            return;
+        }
+
+        // Settled as though the player threw a Pachuco, which loses double whatever
+        // the House holds, so no dice are recorded for them.
+        String outcome = "lose_double";
+        Map<String, Object> data = new HashMap<>();
+        data.put("houseDice", state.getHouseDice());
+        data.put("playerDice", List.of());
+        data.put("forfeit", true);
+
+        BigDecimal playerNet = settle(gameId, state, bet, outcome, data);
+        RollInfo forfeit = new RollInfo(playerId, List.of(), null, outcome, playerNet);
+        forfeit.setForfeit(true);
+        state.getPlayerRolls().add(forfeit);
+        redisService.setGameState(gameId, state);
+    }
+
+    /** Records a settled Bet and moves the money; the caller records the roll it settled. */
+    private BigDecimal settle(UUID gameId, GameState state, BetInfo bet, String outcome,
+                              Map<String, Object> data) {
+        UUID playerId = bet.getPlayerId();
+        BigDecimal betAmount = bet.getAmount();
+
+        data.put("amount", betAmount);
+        data.put("playerId", playerId.toString());
+        data.put("houseId", state.getHousePlayerId().toString());
         data.put("outcome", outcome);
         data.put("round", state.getCurrentRound());
 
@@ -131,11 +177,7 @@ public class BetServiceImpl implements BetService {
         balanceCache.addAfterCommit(state.getHousePlayerId(), playerNet.negate());
 
         state.getRolledPlayers().add(playerId);
-        state.getPlayerRolls().add(new RollInfo(playerId, playerModel.getDiceList(), playerModel.getComboName(),
-            outcome, playerNet));
-        redisService.setGameState(gameId, state);
-
-        return outcome;
+        return playerNet;
     }
 
     private String resolveOutcome(ThrowModel house, ThrowModel player) {

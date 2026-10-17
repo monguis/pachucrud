@@ -118,12 +118,9 @@ public class RollServiceImpl implements RollService {
 
         GameState freshState = redisService.getGameState(gameId).orElseThrow();
 
-        freshState.setCurrentTurn(nextBettorIndex(freshState, freshState.getCurrentTurn() + 1));
+        freshState.setCurrentTurn(freshState.nextBettorIndex(freshState.getCurrentTurn() + 1));
 
-        long bettors = freshState.getBets().stream()
-            .map(GameState.BetInfo::getPlayerId).distinct().count();
-        if (bettors > 0 && freshState.getRolledPlayers().size() >= bettors
-                && !"COMPLETED".equals(freshState.getRoundStatus())) {
+        if (freshState.allBettorsSettled() && !"COMPLETED".equals(freshState.getRoundStatus())) {
             gameStageService.advanceToRoundCompleted(gameId);
             freshState = redisService.getGameState(gameId).orElseThrow();
         } else {
@@ -131,23 +128,6 @@ public class RollServiceImpl implements RollService {
         }
 
         return new RollResult(freshState, playerModel, outcome, outcome.startsWith("win"));
-    }
-
-    private int nextBettorIndex(GameState state, int fromIndex) {
-        List<UUID> order = state.getTurnOrder();
-        for (int i = Math.max(1, fromIndex); i < order.size(); i++) {
-            UUID player = order.get(i);
-            if (player.equals(state.getHousePlayerId())) {
-                continue;
-            }
-            boolean hasBet = state.getBets().stream()
-                .anyMatch(b -> b.getPlayerId().equals(player));
-            boolean alreadyRolled = state.getRolledPlayers().contains(player);
-            if (hasBet && !alreadyRolled) {
-                return i;
-            }
-        }
-        return order.size();
     }
 
     private Integer[] toArray(List<Integer> dice) {

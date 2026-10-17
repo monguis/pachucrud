@@ -7,4 +7,6 @@ import com.pachuco.pachucrud.model.ThrowModel;
 public interface BetService {
     void placeBet(UUID gameId, UUID playerId, BigDecimal amount);
     String settleBet(UUID gameId, UUID playerId, ThrowModel houseModel, ThrowModel playerModel);
+    /** Settles the Bet of a player who left before rolling as though they threw a Pachuco. */
+    void forfeitBet(UUID gameId, UUID playerId);
 }

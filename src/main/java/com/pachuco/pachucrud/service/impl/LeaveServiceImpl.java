@@ -2,7 +2,9 @@ package com.pachuco.pachucrud.service.impl;
 
 import com.pachuco.pachucrud.exception.NotFoundException;
 import com.pachuco.pachucrud.model.EventType;
+import com.pachuco.pachucrud.service.BetService;
 import com.pachuco.pachucrud.service.EventService;
+import com.pachuco.pachucrud.service.GameStageService;
 import com.pachuco.pachucrud.service.LeaveService;
 import com.pachuco.pachucrud.service.RedisService;
 import com.pachuco.pachucrud.service.model.GameState;
@@ -17,10 +19,15 @@ public class LeaveServiceImpl implements LeaveService {
 
     private final EventService eventService;
     private final RedisService redisService;
+    private final BetService betService;
+    private final GameStageService gameStageService;
 
-    public LeaveServiceImpl(EventService eventService, RedisService redisService) {
+    public LeaveServiceImpl(EventService eventService, RedisService redisService,
+                            BetService betService, GameStageService gameStageService) {
         this.eventService = eventService;
         this.redisService = redisService;
+        this.betService = betService;
+        this.gameStageService = gameStageService;
     }
 
     @Override
@@ -33,6 +40,10 @@ public class LeaveServiceImpl implements LeaveService {
             return state;
         }
 
+        // placing a Bet commits the player to it
+        betService.forfeitBet(gameId, playerId);
+        state = redisService.getGameState(gameId).orElseThrow();
+
         Map<String, Object> data = new HashMap<>();
         data.put("playerId", playerId.toString());
         eventService.writeEvent(gameId, EventType.PLAYER_LEFT, playerId, data);
@@ -40,6 +51,15 @@ public class LeaveServiceImpl implements LeaveService {
         state.getWaitingPlayers().remove(playerId);
         state.getReadyPlayers().remove(playerId);
         leaveRotation(state, playerId);
+
+        if ("PLAYERS_THROW".equals(state.getRoundStatus())) {
+            // the turn never waits on a player who has gone
+            state.setCurrentTurn(state.nextBettorIndex(state.getCurrentTurn()));
+            if (state.allBettorsSettled()) {
+                redisService.setGameState(gameId, state);
+                return gameStageService.advanceToRoundCompleted(gameId);
+            }
+        }
         redisService.setGameState(gameId, state);
 
         return state;

@@ -265,12 +265,14 @@ public class EventServiceImpl implements EventService {
                             BigDecimal net = outcome != null && data.get("amount") instanceof Number amt
                                 ? PachucoRules.playerNet(outcome, new BigDecimal(amt.toString()))
                                 : null;
-                            state.getPlayerRolls().add(new RollInfo(
+                            RollInfo roll = new RollInfo(
                                 event.getActorId(),
                                 parseDice(dice),
                                 combo != null ? combo.toString() : null,
                                 outcome,
-                                net));
+                                net);
+                            roll.setForfeit(Boolean.TRUE.equals(data.get("forfeit")));
+                            state.getPlayerRolls().add(roll);
                             state.getRolledPlayers().add(event.getActorId());
                         }
                     }

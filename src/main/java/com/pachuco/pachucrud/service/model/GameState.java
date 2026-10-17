@@ -31,6 +31,7 @@ public class GameState {
         private String combo;
         private String outcome;
         private BigDecimal net;
+        private boolean forfeit;
 
         public RollInfo() {}
         public RollInfo(UUID playerId, List<Integer> dice, String combo, String outcome) {
@@ -54,6 +55,10 @@ public class GameState {
         public void setOutcome(String outcome) { this.outcome = outcome; }
         public BigDecimal getNet() { return net; }
         public void setNet(BigDecimal net) { this.net = net; }
+
+        /** The player left before rolling, so their Bet was settled without dice. */
+        public boolean isForfeit() { return forfeit; }
+        public void setForfeit(boolean forfeit) { this.forfeit = forfeit; }
     }
 
     private UUID gameId;
@@ -104,6 +109,30 @@ public class GameState {
         }
         return new ThrowModel(houseDice.toArray(new Integer[0])).getComboName();
     }
+    /**
+     * The seat of the first player from {@code fromIndex} on who bet and has not rolled,
+     * or the size of the Rotation when none is left. Seat 0 is the House's.
+     */
+    public int nextBettorIndex(int fromIndex) {
+        for (int i = Math.max(1, fromIndex); i < turnOrder.size(); i++) {
+            UUID player = turnOrder.get(i);
+            if (player.equals(housePlayerId)) {
+                continue;
+            }
+            boolean hasBet = bets.stream().anyMatch(b -> b.getPlayerId().equals(player));
+            if (hasBet && !rolledPlayers.contains(player)) {
+                return i;
+            }
+        }
+        return turnOrder.size();
+    }
+
+    /** Every player who bet has rolled or forfeited. */
+    public boolean allBettorsSettled() {
+        long bettors = bets.stream().map(BetInfo::getPlayerId).distinct().count();
+        return bettors > 0 && rolledPlayers.size() >= bettors;
+    }
+
     public List<RollInfo> getPlayerRolls() { return playerRolls; }
     public void setPlayerRolls(List<RollInfo> playerRolls) { this.playerRolls = playerRolls; }
     public List<UUID> getRolledPlayers() { return rolledPlayers; }

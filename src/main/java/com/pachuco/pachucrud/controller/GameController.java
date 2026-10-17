@@ -273,6 +273,7 @@ public class GameController extends GameServiceGrpc.GameServiceImplBase {
                 .addAllDice(roll.getDice())
                 .setCombo(roll.getCombo() != null ? roll.getCombo() : "")
                 .setOutcome(roll.getOutcome() != null ? roll.getOutcome() : "")
+                .setForfeit(roll.isForfeit())
                 .build());
         }
 
