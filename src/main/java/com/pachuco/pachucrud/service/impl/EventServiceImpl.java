@@ -161,7 +161,7 @@ public class EventServiceImpl implements EventService {
                             default -> {}
                         }
                     }
-                    case DEPOSIT, BET_VOIDED -> {
+                    case DEPOSIT, BET_RELEASED -> {
                         Object amt = data.get("amount");
                         if (amt instanceof Number n) {
                             balance = balance.add(BigDecimal.valueOf(n.doubleValue()));
@@ -288,7 +288,7 @@ public class EventServiceImpl implements EventService {
                             }
                         }
                     }
-                    case BET_VOIDED -> {
+                    case BET_RELEASED -> {
                         if (event.getActorId() != null) {
                             state.getBets().removeIf(b -> b.getPlayerId().equals(event.getActorId()));
                         }

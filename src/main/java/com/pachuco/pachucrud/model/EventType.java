@@ -14,7 +14,7 @@ public enum EventType {
     GAME_CANCELLED,
     GAME_ADVANCED,
     PLAYER_LEFT,
-    BET_VOIDED,
+    BET_RELEASED,
     ROUND_ABANDONED,
     DEPOSIT,
     WITHDRAWAL

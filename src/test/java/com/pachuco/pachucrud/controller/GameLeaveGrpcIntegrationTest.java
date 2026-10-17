@@ -259,7 +259,7 @@ class GameLeaveGrpcIntegrationTest {
         assertEquals(List.of(bob, carol), lobby.getTurnOrderList());
         assertEquals(bob, lobby.getHousePlayerId());
         assertTrue(lobby.getBetsList().isEmpty());
-        // bob's Bet is voided; alice's Forfeit, settled before the House left, stands
+        // bob's Bet is Released; alice's Forfeit, settled before the House left, stands
         assertEquals(100.0, balance(bob));
         assertEquals(80.0, balance(alice));
         assertEquals(1020.0, balance(house));
@@ -308,6 +308,27 @@ class GameLeaveGrpcIntegrationTest {
         Games.GameStateResponse lobby = state(game);
         assertEquals(List.of(alice, bob), lobby.getTurnOrderList());
         assertEquals(alice, lobby.getHousePlayerId());
+    }
+
+    @Test
+    void theRoundIsAbandonedWhenNoPlayerIsLeftToPlayAgainstTheHouse() {
+        String house = player(1000);
+        String alice = player(100);
+        String bob = player(100);
+        String game = gameAtBetting(house, alice, bob);
+        bet(game, alice, 10);
+        leave(game, alice);
+
+        leave(game, bob);
+
+        Games.GameStateResponse lobby = state(game);
+        assertEquals("ENOUGH_PLAYERS", lobby.getRoundStatus());
+        assertEquals(List.of(house), lobby.getTurnOrderList());
+        assertEquals(house, lobby.getHousePlayerId());
+        // alice's Forfeit stands
+        assertEquals(80.0, balance(alice));
+        assertEquals(1020.0, balance(house));
+        assertCacheMatchesEvents(house, alice, bob);
     }
 
     // ---- harness ----

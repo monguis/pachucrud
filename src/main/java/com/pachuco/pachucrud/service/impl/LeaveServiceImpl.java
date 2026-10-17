@@ -48,10 +48,16 @@ public class LeaveServiceImpl implements LeaveService {
             return state;
         }
 
+        boolean beforeHouseRolls = ROUND_STAGES.contains(state.getRoundStatus())
+            && state.getHouseDice().isEmpty();
         boolean isHouse = ROUND_STAGES.contains(state.getRoundStatus())
             && playerId.equals(state.getHousePlayerId());
-        if (isHouse && state.getHouseDice().isEmpty()) {
-            return abandonRound(gameId, state, playerId);
+        if (isHouse && beforeHouseRolls) {
+            // the next player in the Rotation takes the House
+            recordLeave(gameId, playerId, false);
+            List<UUID> order = new ArrayList<>(state.getTurnOrder());
+            order.remove(playerId);
+            return abandonRound(gameId, order, order.isEmpty() ? null : order.get(0));
         }
         if (isHouse) {
             return houseLeavesAfterRolling(gameId, state, playerId);
@@ -66,6 +72,9 @@ public class LeaveServiceImpl implements LeaveService {
         state.getReadyPlayers().remove(playerId);
         leaveRotation(state, playerId);
 
+        if (beforeHouseRolls && noOneLeftToPlayTheHouse(state)) {
+            return abandonRound(gameId, new ArrayList<>(state.getTurnOrder()), state.getHousePlayerId());
+        }
         if ("PLAYERS_THROW".equals(state.getRoundStatus())) {
             // the turn never waits on a player who has gone
             state.setCurrentTurn(state.nextBettorIndex(state.getCurrentTurn()));
@@ -80,23 +89,20 @@ public class LeaveServiceImpl implements LeaveService {
     }
 
     /**
-     * With no House Throw there is nothing to settle against: every Bet not yet settled
-     * is voided, and the next round's Lobby starts with the next player as House.
+     * An Abandoned Round ends before the House rolls, so there is nothing to settle
+     * against: every Bet not yet settled is Released, and the next round's Lobby
+     * starts with the given Rotation and House.
      */
-    private GameState abandonRound(UUID gameId, GameState state, UUID house) {
+    private GameState abandonRound(UUID gameId, List<UUID> order, UUID newHouse) {
+        GameState state = redisService.getGameState(gameId).orElseThrow();
         for (UUID bettor : state.getBets().stream().map(GameState.BetInfo::getPlayerId).toList()) {
-            betService.voidBet(gameId, bettor);
+            betService.releaseBet(gameId, bettor);
         }
         state = redisService.getGameState(gameId).orElseThrow();
 
-        recordLeave(gameId, house, false);
-        List<UUID> order = new ArrayList<>(state.getTurnOrder());
-        order.remove(house);
-        UUID newHouse = order.isEmpty() ? null : order.get(0);
-
         Map<String, Object> abandoned = new HashMap<>();
         abandoned.put("roundNumber", state.getCurrentRound());
-        abandoned.put("housePlayerId", house.toString());
+        abandoned.put("housePlayerId", state.getHousePlayerId().toString());
         eventService.writeEvent(gameId, EventType.ROUND_ABANDONED, null, abandoned);
 
         Map<String, Object> advanced = new HashMap<>();
@@ -133,6 +139,11 @@ public class LeaveServiceImpl implements LeaveService {
         state.getLeftPlayers().add(house);
         redisService.setGameState(gameId, state);
         return state;
+    }
+
+    /** Every seat but the House's is empty, so nobody can bet against it. */
+    private static boolean noOneLeftToPlayTheHouse(GameState state) {
+        return state.getTurnOrder().stream().allMatch(p -> p.equals(state.getHousePlayerId()));
     }
 
     private void recordLeave(UUID gameId, UUID playerId, boolean keepsSeat) {

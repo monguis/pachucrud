@@ -142,7 +142,7 @@ public class BetServiceImpl implements BetService {
 
     @Override
     @Transactional
-    public void voidBet(UUID gameId, UUID playerId) {
+    public void releaseBet(UUID gameId, UUID playerId) {
         GameState state = redisService.getGameState(gameId)
             .orElseThrow(() -> new NotFoundException("Game state not found in Redis"));
 
@@ -163,7 +163,7 @@ public class BetServiceImpl implements BetService {
         data.put("round", state.getCurrentRound());
 
         eventService.writeEventWithTransaction(
-            gameId, EventType.BET_VOIDED, playerId, data,
+            gameId, EventType.BET_RELEASED, playerId, data,
             playerId, TransactionType.BET_RELEASE, bet.getAmount());
 
         // the hold taken when the Bet was placed comes back in full
