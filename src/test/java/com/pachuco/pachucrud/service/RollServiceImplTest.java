@@ -3,6 +3,7 @@ package com.pachuco.pachucrud.service;
 import com.pachuco.pachucrud.model.ThrowModel;
 import com.pachuco.pachucrud.service.impl.RollServiceImpl;
 import com.pachuco.pachucrud.service.model.GameState;
+
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
@@ -21,6 +22,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -70,7 +72,7 @@ class RollServiceImplTest {
 
         when(redisService.getGameState(gameId)).thenReturn(Optional.of(state));
 
-        rollService.houseRoll(gameId, house);
+        rollService.houseRollDep(gameId, house);
 
         assertEquals("BANK_THROW", state.getRoundStatus());
         assertTrue(!state.getHouseDice().isEmpty());
@@ -86,7 +88,7 @@ class RollServiceImplTest {
 
         when(redisService.getGameState(gameId)).thenReturn(Optional.of(state));
 
-        assertThrows(IllegalStateException.class, () -> rollService.playerRoll(gameId, carol));
+        assertThrows(IllegalStateException.class, () -> rollService.playerRollDep(gameId, carol));
     }
 
     @Test
@@ -109,11 +111,11 @@ class RollServiceImplTest {
         when(betService.settleBet(eq(gameId), eq(alice), any(ThrowModel.class), any(ThrowModel.class)))
             .thenReturn("loss");
 
-        rollService.playerRoll(gameId, alice);
+        rollService.playerRollDep(gameId, alice);
 
         assertEquals(3, fresh.getCurrentTurn());
         verify(redisService).setGameState(gameId, fresh);
-        verify(gameStageService, never()).advanceToRoundCompleted(gameId);
+        verify(gameStageService, never()).advanceToRoundCompletedDep(gameId);
     }
 
     @Test
@@ -140,8 +142,63 @@ class RollServiceImplTest {
         when(betService.settleBet(eq(gameId), eq(carol), any(ThrowModel.class), any(ThrowModel.class)))
             .thenReturn("loss");
 
-        rollService.playerRoll(gameId, carol);
+        rollService.playerRollDep(gameId, carol);
 
-        verify(gameStageService).advanceToRoundCompleted(gameId);
+        verify(gameStageService).advanceToRoundCompletedDep(gameId);
+    }
+
+    private GameState rollingPlayersState() {
+        GameState state = bettableState("ROLLING_PLAYERS");
+        state.getReadyPlayers().addAll(List.of(alice, bob));
+        return state;
+    }
+
+    @Test
+    void rollGamePlayers_rejectsBeforeRollingWhenAReadyPlayerHasNoBet() {
+        GameState state = rollingPlayersState();
+        bet(state, alice, 10);
+
+        when(redisService.getGameState(gameId)).thenReturn(Optional.of(state));
+
+        assertThrows(IllegalStateException.class, () -> rollService.rollGamePlayers(gameId));
+
+        verifyNoInteractions(eventService, betService);
+        verify(redisService, never()).setGameState(any(), any());
+    }
+
+    @Test
+    void rollGamePlayers_doesNotSaveStateWhenASettlementFails() {
+        GameState state = rollingPlayersState();
+        bet(state, alice, 10);
+        bet(state, bob, 10);
+
+        when(redisService.getGameState(gameId)).thenReturn(Optional.of(state));
+        when(betService.settleBet_New(eq(state), eq(alice), any(ThrowModel.class), any(ThrowModel.class)))
+            .thenReturn("loss");
+        when(betService.settleBet_New(eq(state), eq(bob), any(ThrowModel.class), any(ThrowModel.class)))
+            .thenThrow(new IllegalStateException("db down"));
+
+        assertThrows(IllegalStateException.class, () -> rollService.rollGamePlayers(gameId));
+
+        verify(redisService, never()).setGameState(any(), any());
+    }
+
+    @Test
+    void rollGamePlayers_settlesEveryReadyPlayerAndSavesState() {
+        GameState state = rollingPlayersState();
+        bet(state, alice, 10);
+        bet(state, bob, 10);
+
+        when(redisService.getGameState(gameId)).thenReturn(Optional.of(state));
+        when(betService.settleBet_New(eq(state), any(UUID.class), any(ThrowModel.class), any(ThrowModel.class)))
+            .thenAnswer(invocation -> {
+                state.getRolledPlayers().add(invocation.getArgument(1));
+                return "loss";
+            });
+
+        rollService.rollGamePlayers(gameId);
+
+        assertEquals(5, state.getHouseDice().size());
+        verify(redisService).setGameState(gameId, state);
     }
 }

@@ -1,18 +1,17 @@
 package com.pachuco.pachucrud.service.impl;
 
-import com.pachuco.pachucrud.exception.NotFoundException;
 import com.pachuco.pachucrud.model.EventType;
 import com.pachuco.pachucrud.model.ThrowModel;
 import com.pachuco.pachucrud.service.BetService;
 import com.pachuco.pachucrud.service.EventService;
-import com.pachuco.pachucrud.service.GameStageService;
 import com.pachuco.pachucrud.service.RedisService;
 import com.pachuco.pachucrud.service.RollService;
 import com.pachuco.pachucrud.service.model.GameState;
-import com.pachuco.pachucrud.service.model.RollResult;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Random;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -29,14 +28,12 @@ public class RollServiceImpl implements RollService {
     private final EventService eventService;
     private final RedisService redisService;
     private final BetService betService;
-    private final GameStageService gameStageService;
 
     public RollServiceImpl(EventService eventService, RedisService redisService,
-                           BetService betService, GameStageService gameStageService) {
+                           BetService betService) {
         this.eventService = eventService;
         this.redisService = redisService;
         this.betService = betService;
-        this.gameStageService = gameStageService;
     }
 
     @Override
@@ -51,83 +48,49 @@ public class RollServiceImpl implements RollService {
         return new ThrowModel(dice);
     }
 
+    // One transaction for the whole round: if any settlement fails, the House roll and
+    // every earlier settlement roll back with it, so a retry can't pay a player twice.
     @Override
     @Transactional
-    public RollResult houseRoll(UUID gameId, UUID housePlayerId) {
-        GameState state = redisService.getGameState(gameId)
-            .orElseThrow(() -> new NotFoundException("Game state not found"));
-
-        if (!"BANK_THROW".equals(state.getRoundStatus())) {
-            throw new IllegalStateException("Round is not ready for house roll");
+    public GameState rollGamePlayers(UUID gameId, GameState initialState) {
+        if (!"PLAYERS_BET_SETTING".equals(initialState.getRoundStatus())) {
+            throw new IllegalStateException("Round is not ready for player rolls");
         }
 
-        if (!housePlayerId.equals(state.getHousePlayerId())) {
-            throw new IllegalStateException("Only the house player can roll as house");
+        List<UUID> withoutBet = initialState.getReadyPlayers().stream()
+            .filter(playerId -> initialState.getBets().stream().noneMatch(b -> b.getPlayerId().equals(playerId)))
+            .toList();
+        
+        // Bank does not bet
+        if (withoutBet.size() != 1) {
+            throw new IllegalStateException("Players must place a bet before rolling: " + withoutBet);
         }
 
-        ThrowModel model = roll5D6();
+        // Creates the House player roll
+        UUID housePlayerId = initialState.getHousePlayerId();
+        ThrowModel houseRoll = roll5D6();
 
         Map<String, Object> data = new HashMap<>();
-        data.put("dice", model.getDiceList());
-        data.put("combo", model.getComboName());
+        data.put("dice", houseRoll.getDiceList());
+        data.put("combo", houseRoll.getComboName());
         eventService.writeEvent(gameId, EventType.HOUSE_ROLLED, housePlayerId, data);
 
-        state.setHouseDice(model.getDiceList());
-        redisService.setGameState(gameId, state);
+        initialState.setHouseDice(houseRoll.getDiceList());
 
-        return new RollResult(state, model, "house_rolled", false);
-    }
-
-    @Override
-    @Transactional
-    public RollResult playerRoll(UUID gameId, UUID playerId) {
-        GameState state = redisService.getGameState(gameId)
-            .orElseThrow(() -> new NotFoundException("Game state not found"));
-
-        if (!"PLAYERS_THROW".equals(state.getRoundStatus())) {
-            throw new IllegalStateException("Round is not in player rolling phase");
+        for (UUID playerId : initialState.getReadyPlayers()) {
+            if(playerId.equals(housePlayerId)){
+                continue;
+            }
+            betService.settleBet_New(initialState, playerId, houseRoll, roll5D6());
         }
 
-        if (playerId.equals(state.getHousePlayerId())) {
-            throw new IllegalStateException("House player cannot roll as regular player");
+        if (!initialState.allBettorsSettled()) {
+            throw new IllegalStateException("Not every bettor was settled");
         }
 
-        if (state.getRolledPlayers().contains(playerId)) {
-            throw new IllegalStateException("Player has already rolled this round");
-        }
-
-        if (state.getHouseDice().isEmpty()) {
-            throw new IllegalStateException("House must roll first");
-        }
-
-        int playerIndex = state.getTurnOrder().indexOf(playerId);
-        if (playerIndex < 0 || playerIndex != state.getCurrentTurn()) {
-            throw new IllegalStateException("Not this player's turn to roll");
-        }
-
-        boolean hasBet = state.getBets().stream()
-            .anyMatch(b -> b.getPlayerId().equals(playerId));
-        if (!hasBet) {
-            throw new IllegalStateException("Player must place a bet before rolling");
-        }
-
-        ThrowModel playerModel = roll5D6();
-        ThrowModel houseModel = new ThrowModel(toArray(state.getHouseDice()));
-
-        String outcome = betService.settleBet(gameId, playerId, houseModel, playerModel);
-
-        GameState freshState = redisService.getGameState(gameId).orElseThrow();
-
-        freshState.setCurrentTurn(freshState.nextBettorIndex(freshState.getCurrentTurn() + 1));
-
-        if (freshState.allBettorsSettled() && !"COMPLETED".equals(freshState.getRoundStatus())) {
-            gameStageService.advanceToRoundCompleted(gameId);
-            freshState = redisService.getGameState(gameId).orElseThrow();
-        } else {
-            redisService.setGameState(gameId, freshState);
-        }
-
-        return new RollResult(freshState, playerModel, outcome, outcome.startsWith("win"));
+        // Last, so nothing after it can fail and roll back settlements Redis already shows.
+        redisService.setGameState(gameId, initialState);
+        return initialState;
     }
 
     private Integer[] toArray(List<Integer> dice) {

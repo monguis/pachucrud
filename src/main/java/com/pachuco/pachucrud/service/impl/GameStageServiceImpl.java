@@ -8,8 +8,10 @@ import com.pachuco.pachucrud.repository.entity.GameEntity;
 import com.pachuco.pachucrud.service.EventService;
 import com.pachuco.pachucrud.service.GameStageService;
 import com.pachuco.pachucrud.service.RedisService;
+import com.pachuco.pachucrud.service.RollService;
 import com.pachuco.pachucrud.service.model.GameState;
 import com.pachuco.pachucrud.service.model.GameState.RollInfo;
+
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -31,13 +33,16 @@ public class GameStageServiceImpl implements GameStageService {
     private final GameRepository gameRepository;
     private final EventService eventService;
     private final RedisService redisService;
+    private final RollService rollService;
 
     public GameStageServiceImpl(GameRepository gameRepository,
                                 EventService eventService,
-                                RedisService redisService) {
+                                RedisService redisService,
+                                RollService rollService) {
         this.gameRepository = gameRepository;
         this.eventService = eventService;
         this.redisService = redisService;
+        this.rollService = rollService;
     }
 
     @Override
@@ -131,6 +136,28 @@ public class GameStageServiceImpl implements GameStageService {
 
     @Override
     @Transactional
+    public GameState advanceToDiceRolling(UUID gameId) {
+        GameState state = redisService.getGameState(gameId)
+            .orElseThrow(() -> new NotFoundException("Game state not found"));
+
+        if (!"PLAYERS_BET_SETTING".equals(state.getRoundStatus())) {
+            throw new IllegalStateException("Game is not in PLAYERS_BET_SETTING stage");
+        }
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("targetStage", "DICE_ROLLING");
+        eventService.writeEvent(gameId, EventType.GAME_ADVANCED, null, data);
+
+        GameState updatedGame = rollService.rollGamePlayers(gameId, state);
+        updatedGame.setRoundStatus("DICE_ROLLING");
+        updatedGame.setStatusSetTime(Instant.now());
+        redisService.setGameState(gameId, updatedGame);
+
+        return updatedGame;
+    }
+
+    @Override
+    @Transactional
     public GameState advanceToBankThrow(UUID gameId) {
         GameState state = redisService.getGameState(gameId)
             .orElseThrow(() -> new NotFoundException("Game state not found"));
@@ -194,7 +221,7 @@ public class GameStageServiceImpl implements GameStageService {
         GameState state = redisService.getGameState(gameId)
             .orElseThrow(() -> new NotFoundException("Game state not found"));
 
-        if (!"PLAYERS_THROW".equals(state.getRoundStatus())) {
+        if (!"DICE_ROLLING".equals(state.getRoundStatus())) {
             throw new IllegalStateException("Game is not in PLAYERS_THROW stage");
         }
 

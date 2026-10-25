@@ -81,12 +81,36 @@ public class BetServiceImpl implements BetService {
         redisService.setGameState(gameId, state);
     }
 
+    // @Override
+    // @Transactional
+    // public String settleBet(UUID gameId, UUID playerId, ThrowModel houseModel, ThrowModel playerModel) {
+    //     GameState state = redisService.getGameState(gameId)
+    //         .orElseThrow(() -> new NotFoundException("Game state not found in Redis"));
+
+    //     BetInfo bet = state.getBets().stream()
+    //         .filter(b -> b.getPlayerId().equals(playerId))
+    //         .findFirst()
+    //         .orElseThrow(() -> new IllegalStateException("No bet found for player " + playerId));
+
+    //     String outcome = resolveOutcome(houseModel, playerModel);
+
+    //     Map<String, Object> data = new HashMap<>();
+    //     data.put("houseDice", houseModel.getDiceList());
+    //     data.put("playerDice", playerModel.getDiceList());
+    //     data.put("houseCombo", houseModel.getComboName());
+    //     data.put("playerCombo", playerModel.getComboName());
+
+    //     BigDecimal playerNet = settle(gameId, state, bet, outcome, data);
+    //     state.getPlayerRolls().add(new RollInfo(playerId, playerModel.getDiceList(), playerModel.getComboName(),
+    //         outcome, playerNet));
+    //     redisService.setGameState(gameId, state);
+
+    //     return outcome;
+    // }
+
     @Override
     @Transactional
-    public String settleBet(UUID gameId, UUID playerId, ThrowModel houseModel, ThrowModel playerModel) {
-        GameState state = redisService.getGameState(gameId)
-            .orElseThrow(() -> new NotFoundException("Game state not found in Redis"));
-
+    public String settleBet_New(GameState state, UUID playerId, ThrowModel houseModel, ThrowModel playerModel) {
         BetInfo bet = state.getBets().stream()
             .filter(b -> b.getPlayerId().equals(playerId))
             .findFirst()
@@ -100,10 +124,9 @@ public class BetServiceImpl implements BetService {
         data.put("houseCombo", houseModel.getComboName());
         data.put("playerCombo", playerModel.getComboName());
 
-        BigDecimal playerNet = settle(gameId, state, bet, outcome, data);
+        BigDecimal playerNet = settle(state.getGameId(), state, bet, outcome, data);
         state.getPlayerRolls().add(new RollInfo(playerId, playerModel.getDiceList(), playerModel.getComboName(),
             outcome, playerNet));
-        redisService.setGameState(gameId, state);
 
         return outcome;
     }

@@ -88,6 +88,28 @@ public class ThrowModel {
         return combo.getRank();
     }
 
+    /**
+     * Compares two throws: combo rank first, then, for the same combo, the
+     * faces of the dice that form it (the triple before the pair of a full,
+     * the high pair before the low one). Dice outside the combo never count.
+     */
+    public int compareTo(ThrowModel other) {
+        int byRank = Integer.compare(rank(), other.rank());
+        if (byRank != 0) {
+            return byRank;
+        }
+        int byMainGroup = Integer.compare(mostRepeatedDice, other.mostRepeatedDice);
+        if (byMainGroup != 0 || !hasSecondGroup()) {
+            return byMainGroup;
+        }
+        return Integer.compare(secondMostRepeatedDice, other.secondMostRepeatedDice);
+    }
+
+    // Only here is secondMostRepeatedDice part of the combo rather than a leftover die.
+    private boolean hasSecondGroup() {
+        return combo == ThrowCombos.TWOPAIRS || combo == ThrowCombos.FULL;
+    }
+
     public List<Integer> getDiceList() {
         return List.of(dice);
     }

@@ -10,7 +10,7 @@ import com.pachuco.pachucrud.service.LeaveService;
 import com.pachuco.pachucrud.service.RedisService;
 import com.pachuco.pachucrud.service.RollService;
 import com.pachuco.pachucrud.service.model.GameState;
-import com.pachuco.pachucrud.service.model.RollResult;
+
 import io.grpc.stub.StreamObserver;
 import java.math.BigDecimal;
 import java.util.List;
@@ -133,39 +133,6 @@ public class GameController extends GameServiceGrpc.GameServiceImplBase {
         respondOk(responseObserver, gameService.getGameState(gameId), "BET_PLACED");
     }
 
-    @Override
-    public void houseRoll(Games.RollRequest request,
-                          StreamObserver<Games.RollResponse> responseObserver) {
-        UUID gameId = UUID.fromString(request.getGameId());
-        UUID houseId = UUID.fromString(request.getPlayerId());
-        RollResult result = rollService.houseRoll(gameId, houseId);
-
-        respond(responseObserver, Games.RollResponse.newBuilder()
-            .setGameId(gameId.toString())
-            .setPlayerId(houseId.toString())
-            .addAllDice(result.getModel().getDiceList())
-            .setCombo(result.getModel().getComboName())
-            .setWinner(false)
-            .setMessage("HOUSE_ROLLED")
-            .build());
-    }
-
-    @Override
-    public void playerRoll(Games.RollRequest request,
-                           StreamObserver<Games.RollResponse> responseObserver) {
-        UUID gameId = UUID.fromString(request.getGameId());
-        UUID playerId = UUID.fromString(request.getPlayerId());
-        RollResult result = rollService.playerRoll(gameId, playerId);
-
-        respond(responseObserver, Games.RollResponse.newBuilder()
-            .setGameId(gameId.toString())
-            .setPlayerId(playerId.toString())
-            .addAllDice(result.getModel().getDiceList())
-            .setCombo(result.getModel().getComboName())
-            .setWinner(result.isWinner())
-            .setMessage("PLAYER_ROLLED:" + result.getOutcome())
-            .build());
-    }
 
     @Override
     public void advanceToEnoughPlayers(Games.GameIdRequest request,
@@ -195,6 +162,16 @@ public class GameController extends GameServiceGrpc.GameServiceImplBase {
         GameState state = gameStageService.advanceToPlayersBetSetting(gameId);
 
         respondOk(responseObserver, Optional.of(state), "ADVANCED_TO_PLAYERS_BET_SETTING");
+    }
+
+    @Override
+    public void advanceToDiceRolling(Games.GameIdRequest request,
+                           StreamObserver<Games.GameResponse> responseObserver) {
+        UUID gameId = UUID.fromString(request.getGameId());
+        
+        GameState state = gameStageService.advanceToDiceRolling(gameId);
+
+        respondOk(responseObserver, Optional.of(state), "ADVANCED_TO_DICE_ROLLING");
     }
 
     @Override

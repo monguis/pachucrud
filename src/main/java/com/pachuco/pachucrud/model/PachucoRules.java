@@ -17,7 +17,8 @@ public final class PachucoRules {
             return "win_double";
         }
 
-        return player.rank() > house.rank() ? "win" : "loss";
+        // Same combo is decided by the dice faces; an exact tie goes to the House.
+        return player.compareTo(house) > 0 ? "win" : "loss";
     }
 
     /** Player's signed net result for a settled bet, per the payout matrix. */

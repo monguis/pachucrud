@@ -8,6 +8,7 @@ public interface GameStageService {
     GameState advanceToEnoughPlayers(UUID gameId);
     GameState advanceToGameStart(UUID gameId, List<UUID> playerOrder);
     GameState advanceToPlayersBetSetting(UUID gameId);
+    GameState advanceToDiceRolling(UUID gameId);
     GameState advanceToBankThrow(UUID gameId);
     GameState advanceToPlayersThrow(UUID gameId);
     GameState advanceToRoundCompleted(UUID gameId);

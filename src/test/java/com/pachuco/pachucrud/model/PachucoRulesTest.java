@@ -64,6 +64,50 @@ class PachucoRulesTest {
     }
 
     @Test
+    void sameComboHigherFaceWins() {
+        assertEquals("win", PachucoRules.resolveOutcome(
+            throwOf(2, 2, 2, 2, 2),
+            throwOf(5, 5, 5, 5, 5)));
+    }
+
+    @Test
+    void sameComboLowerFaceLoses() {
+        assertEquals("loss", PachucoRules.resolveOutcome(
+            throwOf(4, 4, 1, 2, 3),
+            throwOf(3, 3, 4, 5, 6)));
+    }
+
+    @Test
+    void fullIsDecidedByTripleBeforePair() {
+        assertEquals("win", PachucoRules.resolveOutcome(
+            throwOf(3, 3, 3, 6, 6),
+            throwOf(4, 4, 4, 1, 1)));
+    }
+
+    @Test
+    void twoPairsIsDecidedByHighPairThenLowPair() {
+        assertEquals("win", PachucoRules.resolveOutcome(
+            throwOf(5, 5, 4, 4, 6),
+            throwOf(6, 6, 1, 1, 2)));
+        assertEquals("win", PachucoRules.resolveOutcome(
+            throwOf(6, 6, 3, 3, 5),
+            throwOf(6, 6, 4, 4, 1)));
+    }
+
+    @Test
+    void diceOutsideTheComboAreIgnoredSoTheHouseWinsTheTie() {
+        assertEquals("loss", PachucoRules.resolveOutcome(
+            throwOf(3, 3, 3, 3, 1),
+            throwOf(3, 3, 3, 3, 6)));
+        assertEquals("loss", PachucoRules.resolveOutcome(
+            throwOf(4, 4, 1, 2, 3),
+            throwOf(4, 4, 6, 5, 3)));
+        assertEquals("loss", PachucoRules.resolveOutcome(
+            throwOf(6, 6, 4, 4, 1),
+            throwOf(6, 6, 4, 4, 2)));
+    }
+
+    @Test
     void fullBeatsThreeOfAKind() {
         assertEquals("win", PachucoRules.resolveOutcome(
             throwOf(1, 1, 1, 2, 3),

@@ -1,11 +1,11 @@
 package com.pachuco.pachucrud.service;
 
 import com.pachuco.pachucrud.model.ThrowModel;
-import com.pachuco.pachucrud.service.model.RollResult;
+import com.pachuco.pachucrud.service.model.GameState;
+
 import java.util.UUID;
 
 public interface RollService {
     ThrowModel roll5D6();
-    RollResult houseRoll(UUID gameId, UUID housePlayerId);
-    RollResult playerRoll(UUID gameId, UUID playerId);
+    GameState rollGamePlayers(UUID gameId, GameState initialState);
 }
