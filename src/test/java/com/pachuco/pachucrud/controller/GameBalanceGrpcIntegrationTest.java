@@ -3,6 +3,7 @@ package com.pachuco.pachucrud.controller;
 import com.pachuco.pachucrud.service.RedisService;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
+import io.grpc.StatusRuntimeException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -27,6 +28,8 @@ import pachuco_proto.UserGrpc;
 import pachuco_proto.Users;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Plays game rounds over real gRPC against real Postgres and real Redis, checking
@@ -127,7 +130,7 @@ class GameBalanceGrpcIntegrationTest {
         bet(game, alice, 10);
         bet(game, bob, 20);
         bet(game, carol, 30);
-        rollRound(game, house);
+        rollRound(game);
 
         // Dice are random: the invariants must hold whatever the outcomes.
         assertCacheMatchesEvents(house, alice, bob, carol);
@@ -141,7 +144,7 @@ class GameBalanceGrpcIntegrationTest {
 
         String game = gameAtBetting(house, alice);
         bet(game, alice, 25);
-        rollRound(game, house);
+        rollRound(game);
 
         double before = balance(house);
         redisService.deleteBalance(UUID.fromString(house));
@@ -159,9 +162,6 @@ class GameBalanceGrpcIntegrationTest {
             String p = player(100);
             String game = gameAtBetting(house, p);
             bet(game, p, 10);
-            games.advanceToBankThrow(gameId(game));
-            games.houseRoll(Games.RollRequest.newBuilder().setGameId(game).setPlayerId(house).build());
-            games.advanceToPlayersThrow(gameId(game));
             gameIds.add(game);
             players.add(p);
         }
@@ -170,12 +170,10 @@ class GameBalanceGrpcIntegrationTest {
         ExecutorService pool = Executors.newFixedThreadPool(gameCount);
         try {
             List<Future<?>> rolls = new ArrayList<>();
-            for (int i = 0; i < gameCount; i++) {
-                String game = gameIds.get(i);
-                String p = players.get(i);
+            for (String game : gameIds) {
                 rolls.add(pool.submit(() -> {
                     start.await();
-                    games.playerRoll(Games.RollRequest.newBuilder().setGameId(game).setPlayerId(p).build());
+                    games.advanceToDiceRolling(gameId(game));
                     return null;
                 }));
             }
@@ -188,19 +186,34 @@ class GameBalanceGrpcIntegrationTest {
         }
 
         assertCacheMatchesEvents(house);
+        assertCacheMatchesEvents(players.toArray(String[]::new));
+    }
+
+    @Test
+    void aRoundCannotRollWhileAReadyPlayerHasNotBet() {
+        String house = player(1000);
+        String alice = player(100);
+        String bob = player(100);
+
+        String game = gameAtBetting(house, alice, bob);
+        bet(game, alice, 10);
+
+        assertThrows(StatusRuntimeException.class, () -> games.advanceToDiceRolling(gameId(game)));
+
+        Games.GameStateResponse state = games.getGameState(gameId(game));
+        assertEquals("PLAYERS_BET_SETTING", state.getRoundStatus());
+        assertTrue(state.getPlayerRollsList().isEmpty());
+        assertEquals(90.0, balance(alice));
+        assertEquals(1000.0, balance(house));
+        assertCacheMatchesEvents(house, alice, bob);
     }
 
     // ---- harness ----
 
-    /** House rolls, then every Player who bet rolls in turn until the round completes. */
-    private void rollRound(String game, String house) {
-        games.advanceToBankThrow(gameId(game));
-        games.houseRoll(Games.RollRequest.newBuilder().setGameId(game).setPlayerId(house).build());
-        games.advanceToPlayersThrow(gameId(game));
-        while (!"COMPLETED".equals(games.getGameState(gameId(game)).getRoundStatus())) {
-            String next = games.getCurrentTurn(gameId(game)).getCurrentPlayerId();
-            games.playerRoll(Games.RollRequest.newBuilder().setGameId(game).setPlayerId(next).build());
-        }
+    /** The House and every Player who bet roll in one go, then the round completes. */
+    private void rollRound(String game) {
+        games.advanceToDiceRolling(gameId(game));
+        games.advanceToRoundCompleted(gameId(game));
     }
 
     private String player(double startingBalance) {
@@ -216,12 +229,21 @@ class GameBalanceGrpcIntegrationTest {
             games.joinGame(Games.JoinGameRequest.newBuilder().setGameId(game).setPlayerId(p).build());
         }
         games.advanceToEnoughPlayers(gameId(game));
+        markReady(game, house);
+        for (String p : players) {
+            markReady(game, p);
+        }
         games.advanceToGameStart(Games.AdvanceToGameStartRequest.newBuilder()
             .setGameId(game).addPlayerOrder(house).addAllPlayerOrder(List.of(players)).build());
         games.startRound(Games.StartRoundRequest.newBuilder()
             .setGameId(game).setHousePlayerId(house).setBetLimit(50).build());
         games.advanceToPlayersBetSetting(gameId(game));
         return game;
+    }
+
+    private void markReady(String game, String player) {
+        games.markPlayerReady(Games.MarkPlayerReadyRequest.newBuilder()
+            .setGameId(game).setPlayerId(player).build());
     }
 
     private void bet(String game, String player, double amount) {

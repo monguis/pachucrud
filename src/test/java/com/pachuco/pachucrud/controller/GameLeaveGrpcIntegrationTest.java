@@ -84,7 +84,7 @@ class GameLeaveGrpcIntegrationTest {
         String game = gameAtBetting(house, alice, bob);
         bet(game, alice, 10);
         bet(game, bob, 10);
-        rollRound(game, house);
+        rollRound(game);
         games.advanceToNextRound(gameId(game));
         markReady(game, alice);
 
@@ -126,24 +126,6 @@ class GameLeaveGrpcIntegrationTest {
     }
 
     @Test
-    void aPlayerWithoutABetWhoLeavesMidRoundDoesNotMoveTheTurn() {
-        String house = player(1000);
-        String alice = player(100);
-        String bob = player(100);
-        String carol = player(100);
-        String game = gameAtBetting(house, alice, bob, carol);
-        bet(game, bob, 10);
-        bet(game, carol, 10);
-        houseRolls(game, house);
-        assertEquals(bob, currentPlayer(game));
-
-        leave(game, alice);
-
-        assertEquals(List.of(house, bob, carol), state(game).getTurnOrderList());
-        assertEquals(bob, currentPlayer(game));
-    }
-
-    @Test
     void aPlayerWhoLeavesTheRoundSummaryIsNotInTheNextLobby() {
         String house = player(1000);
         String alice = player(100);
@@ -151,7 +133,7 @@ class GameLeaveGrpcIntegrationTest {
         String game = gameAtBetting(house, alice, bob);
         bet(game, alice, 10);
         bet(game, bob, 10);
-        rollRound(game, house);
+        rollRound(game);
 
         leave(game, bob);
         games.advanceToNextRound(gameId(game));
@@ -209,36 +191,24 @@ class GameLeaveGrpcIntegrationTest {
     }
 
     @Test
-    void theBettorWhoseTurnItIsLeavingPassesTheTurnToTheNextBettor() {
+    void aBettorWhoLeftBeforeRollingDoesNotStopTheRoundFromRolling() {
         String house = player(1000);
         String alice = player(100);
         String bob = player(100);
         String carol = player(100);
         String game = gameAtBetting(house, alice, bob, carol);
         bet(game, alice, 10);
+        bet(game, bob, 10);
         bet(game, carol, 10);
-        houseRolls(game, house);
-        assertEquals(alice, currentPlayer(game));
-
         leave(game, alice);
 
-        assertEquals(carol, currentPlayer(game));
-    }
+        rollRound(game);
 
-    @Test
-    void theLastBettorLeavingCompletesTheRound() {
-        String house = player(1000);
-        String alice = player(100);
-        String bob = player(100);
-        String game = gameAtBetting(house, alice, bob);
-        bet(game, alice, 10);
-        bet(game, bob, 10);
-        houseRolls(game, house);
-        games.playerRoll(Games.RollRequest.newBuilder().setGameId(game).setPlayerId(alice).build());
-
-        leave(game, bob);
-
-        assertEquals("COMPLETED", state(game).getRoundStatus());
+        Games.GameStateResponse summary = state(game);
+        assertEquals("COMPLETED", summary.getRoundStatus());
+        assertEquals(3, summary.getPlayerRollsCount());
+        assertEquals(1300.0, balance(house) + balance(alice) + balance(bob) + balance(carol));
+        assertCacheMatchesEvents(house, alice, bob, carol);
     }
 
     @Test
@@ -284,20 +254,16 @@ class GameLeaveGrpcIntegrationTest {
     }
 
     @Test
-    void theHouseLeavingAfterRollingLetsTheRoundSettleAgainstItsThrow() {
+    void theHouseLeavingTheRoundSummaryKeepsItsSettlementsAndPassesTheHouseOn() {
         String house = player(1000);
         String alice = player(100);
         String bob = player(100);
         String game = gameAtBetting(house, alice, bob);
         bet(game, alice, 10);
         bet(game, bob, 10);
-        houseRolls(game, house);
+        rollRound(game);
 
         leave(game, house);
-        while (!"COMPLETED".equals(state(game).getRoundStatus())) {
-            games.playerRoll(Games.RollRequest.newBuilder()
-                .setGameId(game).setPlayerId(currentPlayer(game)).build());
-        }
 
         assertEquals(2, state(game).getPlayerRollsCount());
         assertEquals(1200.0, balance(house) + balance(alice) + balance(bob));
@@ -347,35 +313,24 @@ class GameLeaveGrpcIntegrationTest {
         }
     }
 
-    private void houseRolls(String game, String house) {
-        games.advanceToBankThrow(gameId(game));
-        games.houseRoll(Games.RollRequest.newBuilder().setGameId(game).setPlayerId(house).build());
-        games.advanceToPlayersThrow(gameId(game));
-    }
-
-    private String currentPlayer(String game) {
-        return games.getCurrentTurn(gameId(game)).getCurrentPlayerId();
-    }
-
     private void join(String game, String player) {
         games.joinGame(Games.JoinGameRequest.newBuilder().setGameId(game).setPlayerId(player).build());
     }
 
-    /** House rolls, then every Player who bet rolls in turn until the round completes. */
-    private void rollRound(String game, String house) {
-        games.advanceToBankThrow(gameId(game));
-        games.houseRoll(Games.RollRequest.newBuilder().setGameId(game).setPlayerId(house).build());
-        games.advanceToPlayersThrow(gameId(game));
-        while (!"COMPLETED".equals(state(game).getRoundStatus())) {
-            String next = games.getCurrentTurn(gameId(game)).getCurrentPlayerId();
-            games.playerRoll(Games.RollRequest.newBuilder().setGameId(game).setPlayerId(next).build());
-        }
+    /** The House and every Player who bet roll in one go, then the round completes. */
+    private void rollRound(String game) {
+        games.advanceToDiceRolling(gameId(game));
+        games.advanceToRoundCompleted(gameId(game));
     }
 
     /** Creates a game with {@code house} as the House and drives it to the betting stage. */
     private String gameAtBetting(String house, String... players) {
         String game = createGame(house, players);
         games.advanceToEnoughPlayers(gameId(game));
+        markReady(game, house);
+        for (String p : players) {
+            markReady(game, p);
+        }
         games.advanceToGameStart(Games.AdvanceToGameStartRequest.newBuilder()
             .setGameId(game).addPlayerOrder(house).addAllPlayerOrder(List.of(players)).build());
         games.startRound(Games.StartRoundRequest.newBuilder()

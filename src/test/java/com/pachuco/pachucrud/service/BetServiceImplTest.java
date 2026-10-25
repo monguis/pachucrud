@@ -1,6 +1,8 @@
 package com.pachuco.pachucrud.service;
 
+import com.pachuco.pachucrud.model.EventType;
 import com.pachuco.pachucrud.model.ThrowModel;
+import com.pachuco.pachucrud.model.TransactionType;
 import com.pachuco.pachucrud.service.impl.BetServiceImpl;
 import com.pachuco.pachucrud.service.model.GameState;
 import java.math.BigDecimal;
@@ -21,6 +23,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -76,12 +79,11 @@ class BetServiceImplTest {
 
     @Test
     void settleBet_recordsSignedNetOnRoll() {
-        GameState state = state("PLAYERS_THROW");
+        GameState state = state("PLAYERS_BET_SETTING");
         state.getBets().add(new GameState.BetInfo(alice, BigDecimal.TEN));
-        when(redisService.getGameState(gameId)).thenReturn(Optional.of(state));
 
         // player pachuco vs house pair -> lose_double
-        String outcome = betService.settleBet(gameId, alice,
+        String outcome = betService.settleBet_New(state, alice,
             new ThrowModel(new Integer[] {1, 1, 2, 3, 4}),
             new ThrowModel(new Integer[] {1, 2, 3, 4, 5}));
 
@@ -89,7 +91,33 @@ class BetServiceImplTest {
         GameState.RollInfo roll = state.getPlayerRolls().get(0);
         assertEquals(0, BigDecimal.valueOf(-20).compareTo(roll.getNet()));
         assertEquals("pachuco", roll.getCombo());
-        verify(eventService).writeEventWithTransaction(eq(gameId), any(), eq(alice), any(),
-            eq(alice), any(), any(), anyInt());
+        assertEquals(List.of(alice), state.getRolledPlayers());
+        verify(eventService).writeEventWithTransaction(eq(gameId), eq(EventType.PLAYER_ROLLED), eq(alice), any(),
+            eq(alice), eq(TransactionType.BET_LOSS_DOUBLE), any(), anyInt());
+    }
+
+    @Test
+    void settleBet_leavesSavingTheStateToTheCaller() {
+        GameState state = state("PLAYERS_BET_SETTING");
+        state.getBets().add(new GameState.BetInfo(alice, BigDecimal.TEN));
+
+        betService.settleBet_New(state, alice,
+            new ThrowModel(new Integer[] {1, 1, 2, 3, 4}),
+            new ThrowModel(new Integer[] {6, 6, 6, 2, 3}));
+
+        verify(redisService, never()).getGameState(any());
+        verify(redisService, never()).setGameState(any(), any());
+    }
+
+    @Test
+    void settleBet_rejectsPlayerWithoutABet() {
+        GameState state = state("PLAYERS_BET_SETTING");
+
+        assertThrows(IllegalStateException.class, () -> betService.settleBet_New(state, alice,
+            new ThrowModel(new Integer[] {1, 1, 2, 3, 4}),
+            new ThrowModel(new Integer[] {6, 6, 6, 2, 3})));
+
+        assertEquals(List.of(), state.getPlayerRolls());
+        verifyNoInteractions(eventService);
     }
 }

@@ -9,6 +9,7 @@ import com.pachuco.pachucrud.service.model.GameState;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,6 +29,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -36,6 +38,7 @@ class GameStageServiceImplTest {
     @Mock GameRepository gameRepository;
     @Mock EventService eventService;
     @Mock RedisService redisService;
+    @Mock RollService rollService;
 
     private GameStageServiceImpl stageService;
     private UUID gameId;
@@ -46,7 +49,7 @@ class GameStageServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        stageService = new GameStageServiceImpl(gameRepository, eventService, redisService);
+        stageService = new GameStageServiceImpl(gameRepository, eventService, redisService, rollService);
         gameId = UUID.randomUUID();
         house = UUID.randomUUID();
         alice = UUID.randomUUID();
@@ -191,9 +194,80 @@ class GameStageServiceImplTest {
     @Test
     void advanceToNextRound_rejectsNonCompletedRound() {
         GameState state = completedState();
-        state.setRoundStatus("PLAYERS_THROW");
+        state.setRoundStatus("DICE_ROLLING");
         when(redisService.getGameState(gameId)).thenReturn(Optional.of(state));
 
         assertThrows(IllegalStateException.class, () -> stageService.advanceToNextRound(gameId));
+    }
+
+    private GameState roundState(String roundStatus) {
+        GameState state = new GameState();
+        state.setGameId(gameId);
+        state.setStatus("ACTIVE");
+        state.setRoundStatus(roundStatus);
+        state.setHousePlayerId(house);
+        state.setTurnOrder(new ArrayList<>(List.of(house, alice)));
+        return state;
+    }
+
+    @Test
+    void advanceToDiceRolling_rollsTheRoundAndMovesToDiceRolling() {
+        GameState state = roundState("PLAYERS_BET_SETTING");
+        when(redisService.getGameState(gameId)).thenReturn(Optional.of(state));
+        when(rollService.rollGamePlayers(gameId, state)).thenReturn(state);
+
+        GameState result = stageService.advanceToDiceRolling(gameId);
+
+        assertEquals("DICE_ROLLING", result.getRoundStatus());
+        assertNotNull(result.getStatusSetTime());
+        verify(rollService).rollGamePlayers(gameId, state);
+        verify(eventService).writeEvent(eq(gameId), eq(EventType.GAME_ADVANCED), isNull(),
+            eq(Map.of("targetStage", "DICE_ROLLING")));
+        verify(redisService).setGameState(gameId, state);
+    }
+
+    @Test
+    void advanceToDiceRolling_rejectsRoundOutsideBetting() {
+        GameState state = roundState("BET_SETTING");
+        when(redisService.getGameState(gameId)).thenReturn(Optional.of(state));
+
+        assertThrows(IllegalStateException.class, () -> stageService.advanceToDiceRolling(gameId));
+
+        verifyNoInteractions(rollService, eventService);
+        verify(redisService, never()).setGameState(any(), any());
+    }
+
+    @Test
+    void advanceToDiceRolling_savesNothingWhenTheRollFails() {
+        GameState state = roundState("PLAYERS_BET_SETTING");
+        when(redisService.getGameState(gameId)).thenReturn(Optional.of(state));
+        when(rollService.rollGamePlayers(gameId, state)).thenThrow(new IllegalStateException("no bet"));
+
+        assertThrows(IllegalStateException.class, () -> stageService.advanceToDiceRolling(gameId));
+
+        assertEquals("PLAYERS_BET_SETTING", state.getRoundStatus());
+        verify(redisService, never()).setGameState(any(), any());
+    }
+
+    @Test
+    void advanceToRoundCompleted_completesARolledRound() {
+        GameState state = roundState("DICE_ROLLING");
+        when(redisService.getGameState(gameId)).thenReturn(Optional.of(state));
+
+        GameState result = stageService.advanceToRoundCompleted(gameId);
+
+        assertEquals("COMPLETED", result.getRoundStatus());
+        verify(eventService).writeEvent(eq(gameId), eq(EventType.GAME_ADVANCED), isNull(),
+            eq(Map.of("targetStage", "COMPLETED")));
+        verify(redisService).setGameState(gameId, state);
+    }
+
+    @Test
+    void advanceToRoundCompleted_rejectsRoundThatHasNotRolled() {
+        GameState state = roundState("PLAYERS_BET_SETTING");
+        when(redisService.getGameState(gameId)).thenReturn(Optional.of(state));
+
+        assertThrows(IllegalStateException.class, () -> stageService.advanceToRoundCompleted(gameId));
+        verify(redisService, never()).setGameState(any(), any());
     }
 }
