@@ -1,6 +1,7 @@
 package com.pachuco.pachucrud.service;
 
 import com.pachuco.pachucrud.model.EventType;
+import com.pachuco.pachucrud.model.GameStage;
 import com.pachuco.pachucrud.model.ThrowModel;
 import com.pachuco.pachucrud.service.impl.RollServiceImpl;
 import com.pachuco.pachucrud.service.model.GameState;
@@ -52,7 +53,7 @@ class RollServiceImplTest {
     private GameState bettingState() {
         GameState state = new GameState();
         state.setGameId(gameId);
-        state.setRoundStatus("PLAYERS_BET_SETTING");
+        state.setRoundStatus(GameStage.PLAYERS_BET_SETTING);
         state.setHousePlayerId(house);
         state.setTurnOrder(new ArrayList<>(List.of(house, alice, bob)));
         state.getReadyPlayers().addAll(List.of(house, alice, bob));
@@ -83,7 +84,7 @@ class RollServiceImplTest {
     @Test
     void rollGamePlayers_rejectsRoundOutsideBetting() {
         GameState state = bettingState();
-        state.setRoundStatus("BET_SETTING");
+        state.setRoundStatus(GameStage.BET_SETTING);
         bet(state, alice, 10);
         bet(state, bob, 10);
 

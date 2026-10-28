@@ -144,7 +144,7 @@ class GameLeaveGrpcIntegrationTest {
     }
 
     @Test
-    void aPlayerWhoComesBackJoinsAtTheEndOfTheRotation() {
+    void aPlayerWhoComesBackDuringTheRoundSitsItOutLikeAnyNewcomer() {
         String house = player(1000);
         String alice = player(100);
         String bob = player(100);
@@ -153,7 +153,9 @@ class GameLeaveGrpcIntegrationTest {
         leave(game, alice);
         join(game, alice);
 
-        assertEquals(List.of(house, bob, alice), state(game).getTurnOrderList());
+        Games.GameStateResponse round = state(game);
+        assertEquals(List.of(house, bob), round.getTurnOrderList());
+        assertTrue(round.getWaitingPlayersList().contains(alice));
     }
 
     @Test
@@ -228,6 +230,7 @@ class GameLeaveGrpcIntegrationTest {
         assertEquals("ENOUGH_PLAYERS", lobby.getRoundStatus());
         assertEquals(List.of(bob, carol), lobby.getTurnOrderList());
         assertEquals(bob, lobby.getHousePlayerId());
+        assertFalse(lobby.getWaitingPlayersList().contains(house));
         assertTrue(lobby.getBetsList().isEmpty());
         // bob's Bet is Released; alice's Forfeit, settled before the House left, stands
         assertEquals(100.0, balance(bob));
@@ -274,6 +277,7 @@ class GameLeaveGrpcIntegrationTest {
         Games.GameStateResponse lobby = state(game);
         assertEquals(List.of(alice, bob), lobby.getTurnOrderList());
         assertEquals(alice, lobby.getHousePlayerId());
+        assertEquals(List.of(alice, bob), lobby.getWaitingPlayersList());
     }
 
     @Test

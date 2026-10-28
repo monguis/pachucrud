@@ -3,6 +3,7 @@ package com.pachuco.pachucrud.service;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pachuco.pachucrud.model.EventType;
+import com.pachuco.pachucrud.model.GameStage;
 import com.pachuco.pachucrud.repository.EventRepository;
 import com.pachuco.pachucrud.repository.GameRepository;
 import com.pachuco.pachucrud.repository.TransactionRepository;
@@ -20,6 +21,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -74,7 +76,7 @@ class EventServiceImplTest {
 
         GameState state = eventService.replayEvents(events);
 
-        assertEquals("GAME_START", state.getRoundStatus());
+        assertEquals(GameStage.GAME_START, state.getRoundStatus());
         assertEquals(house, state.getHousePlayerId());
         assertEquals(List.of(house, alice, bob), state.getTurnOrder());
     }
@@ -91,18 +93,19 @@ class EventServiceImplTest {
     }
 
     @Test
-    void replay_appendsMidRoundJoinerToTurnOrder() {
+    void replay_keepsMidRoundJoinerOutOfTheRotation() {
+        UUID dave = UUID.randomUUID();
         List<EventEntity> events = List.of(
             event(EventType.GAME_CREATED, house, "{}"),
             event(EventType.PLAYER_JOINED, alice, "{}"),
             event(EventType.PLAYER_JOINED, bob, "{}"),
             event(EventType.GAME_ADVANCED, null, gameStartEvent()),
-            event(EventType.PLAYER_JOINED, UUID.randomUUID(), "{}"));
+            event(EventType.PLAYER_JOINED, dave, "{}"));
 
         GameState state = eventService.replayEvents(events);
 
-        assertEquals(4, state.getTurnOrder().size());
-        assertEquals(4, state.getWaitingPlayers().size());
+        assertFalse(state.getTurnOrder().contains(dave));
+        assertTrue(state.getWaitingPlayers().contains(dave));
     }
 
     @Test
@@ -155,10 +158,42 @@ class EventServiceImplTest {
 
         GameState state = eventService.replayEvents(events);
 
-        assertEquals("ENOUGH_PLAYERS", state.getRoundStatus());
+        assertEquals(GameStage.ENOUGH_PLAYERS, state.getRoundStatus());
         assertEquals(house, state.getHousePlayerId());
         assertEquals(List.of(house, alice, bob, dave), state.getTurnOrder());
         assertEquals(List.of(house, alice, bob, dave), state.getWaitingPlayers());
         assertTrue(state.getReadyPlayers().isEmpty());
+    }
+
+    @Test
+    void replay_keepsDiceRollingAndRestoresTheTurnAfterRolls() {
+        List<EventEntity> events = List.of(
+            event(EventType.GAME_CREATED, house, "{}"),
+            event(EventType.PLAYER_JOINED, alice, "{}"),
+            event(EventType.PLAYER_JOINED, bob, "{}"),
+            event(EventType.GAME_ADVANCED, null, gameStartEvent()),
+            event(EventType.GAME_ADVANCED, null, "{\"targetStage\":\"DICE_ROLLING\"}"),
+            event(EventType.HOUSE_ROLLED, house, "{\"dice\":[2,2,2,2,2]}"),
+            event(EventType.TURN_PASSED, house, "{\"currentTurn\":1}"),
+            event(EventType.TURN_PASSED, alice, "{\"currentTurn\":2}"));
+
+        GameState state = eventService.replayEvents(events);
+
+        assertEquals(GameStage.DICE_ROLLING, state.getRoundStatus());
+        assertEquals(2, state.getCurrentTurn());
+    }
+
+    @Test
+    void replay_movesAGameFromBeforeDiceRollingOnToPlayersThrow() {
+        List<EventEntity> events = List.of(
+            event(EventType.GAME_CREATED, house, "{}"),
+            event(EventType.PLAYER_JOINED, alice, "{}"),
+            event(EventType.GAME_ADVANCED, null, gameStartEvent()),
+            event(EventType.GAME_ADVANCED, null, "{\"targetStage\":\"BANK_THROW\"}"),
+            event(EventType.HOUSE_ROLLED, house, "{\"dice\":[2,2,2,2,2]}"));
+
+        GameState state = eventService.replayEvents(events);
+
+        assertEquals(GameStage.PLAYERS_THROW, state.getRoundStatus());
     }
 }

@@ -16,6 +16,7 @@ public enum EventType {
     PLAYER_LEFT,
     BET_RELEASED,
     ROUND_ABANDONED,
+    TURN_PASSED,
     DEPOSIT,
     WITHDRAWAL
 }

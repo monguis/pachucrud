@@ -1,10 +1,13 @@
 package com.pachuco.pachucrud.service.model;
 
+import com.pachuco.pachucrud.model.GameStage;
 import com.pachuco.pachucrud.model.ThrowModel;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -57,7 +60,7 @@ public class GameState {
     private UUID gameId;
     private String status;
     private int currentRound;
-    private String roundStatus;
+    private GameStage roundStatus;
     private UUID housePlayerId;
     private BigDecimal betLimit;
     private List<UUID> turnOrder = new ArrayList<>();
@@ -88,21 +91,76 @@ public class GameState {
         return new ThrowModel(houseDice.toArray(new Integer[0])).getComboName();
     }
     /**
-     * The seat of the first player from {@code fromIndex} on who bet and has not rolled,
-     * or the size of the Rotation when none is left. Seat 0 is the House's.
+     * The first seat from {@code fromIndex} on that still has a hand to Roll, or the size
+     * of the Rotation when none is left. Seat 0 is the House's. Seats with no dice (no Bet,
+     * a Forfeit) and players who have left are skipped.
      */
-    public int nextBettorIndex(int fromIndex) {
-        for (int i = Math.max(1, fromIndex); i < turnOrder.size(); i++) {
+    public int nextSeatWithHand(int fromIndex) {
+        for (int i = Math.max(0, fromIndex); i < turnOrder.size(); i++) {
             UUID player = turnOrder.get(i);
-            if (player.equals(housePlayerId)) {
+            if (leftPlayers.contains(player)) {
                 continue;
             }
-            boolean hasBet = bets.stream().anyMatch(b -> b.getPlayerId().equals(player));
-            if (hasBet && !rolledPlayers.contains(player)) {
+            boolean hasHand = player.equals(housePlayerId)
+                ? !houseDice.isEmpty()
+                : playerRolls.stream().anyMatch(r -> r.getPlayerId().equals(player) && !r.getDice().isEmpty());
+            if (hasHand) {
                 return i;
             }
         }
         return turnOrder.size();
+    }
+
+    /**
+     * Moves the table into the next round's Lobby with the given Rotation and House: the
+     * round's Bets and hands are cleared and every seated player starts it as a Joined Player,
+     * including those who joined during the round.
+     */
+    public void enterNextLobby(List<UUID> rotation, UUID house) {
+        List<UUID> joined = new ArrayList<>(rotation);
+        for (List<UUID> seated : List.of(waitingPlayers, readyPlayers)) {
+            for (UUID player : seated) {
+                if (!joined.contains(player)) {
+                    joined.add(player);
+                }
+            }
+        }
+        turnOrder = new ArrayList<>(rotation);
+        housePlayerId = house;
+        leftPlayers.clear();
+        bets.clear();
+        playerRolls.clear();
+        rolledPlayers.clear();
+        houseDice = new ArrayList<>();
+        betLimit = null;
+        currentTurn = 0;
+        waitingPlayers = joined;
+        readyPlayers.clear();
+        roundStatus = GameStage.ENOUGH_PLAYERS;
+    }
+
+    /**
+     * The coming round's Rotation: the Ready Players who held a place in the last one keep
+     * their order, and every other Ready Player goes in at the end in the order they readied.
+     */
+    public List<UUID> rotationOfReadyPlayers() {
+        List<UUID> rotation = new ArrayList<>(turnOrder);
+        rotation.retainAll(readyPlayers);
+        for (UUID player : readyPlayers) {
+            if (!rotation.contains(player)) {
+                rotation.add(player);
+            }
+        }
+        return rotation;
+    }
+
+    /** Everyone holding a seat, in the Rotation or Joined, counted once; players who have left are not. */
+    public int seatedPlayerCount() {
+        Set<UUID> seated = new HashSet<>(turnOrder);
+        seated.addAll(waitingPlayers);
+        seated.addAll(readyPlayers);
+        seated.removeAll(leftPlayers);
+        return seated.size();
     }
 
     /** Every player who bet has rolled or forfeited. */

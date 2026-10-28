@@ -4,6 +4,7 @@ import com.pachuco.pachucrud.exception.NotFoundException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pachuco.pachucrud.model.EventType;
+import com.pachuco.pachucrud.model.GameStage;
 import com.pachuco.pachucrud.model.PachucoRules;
 import com.pachuco.pachucrud.model.TransactionType;
 import com.pachuco.pachucrud.repository.EventRepository;
@@ -215,7 +216,7 @@ public class EventServiceImpl implements EventService {
                     case GAME_CREATED -> {
                         state.setGameId(event.getGame().getId());
                         state.setStatus("PENDING");
-                        state.setRoundStatus("INIT");
+                        state.setRoundStatus(GameStage.INIT);
                         state.setCurrentRound(0);
                         if (event.getActorId() != null) {
                             state.getWaitingPlayers().add(event.getActorId());
@@ -224,14 +225,11 @@ public class EventServiceImpl implements EventService {
                     case PLAYER_JOINED -> {
                         if (event.getActorId() != null) {
                             state.getWaitingPlayers().add(event.getActorId());
-                            if (!state.getTurnOrder().isEmpty()) {
-                                state.getTurnOrder().add(event.getActorId());
-                            }
                         }
                     }
                     case ROUND_STARTED -> {
                         state.setCurrentRound(state.getCurrentRound() + 1);
-                        state.setRoundStatus("PLAYERS_BET_SETTING");
+                        state.setRoundStatus(GameStage.PLAYERS_BET_SETTING);
                         state.setHouseDice(new ArrayList<>());
                         state.getBets().clear();
                         state.getPlayerRolls().clear();
@@ -254,7 +252,16 @@ public class EventServiceImpl implements EventService {
                     }
                     case HOUSE_ROLLED -> {
                         state.setHouseDice(parseDice(data.get("dice")));
-                        state.setRoundStatus("PLAYERS_THROW");
+                        // games before DICE_ROLLING moved on from BANK_THROW once the House rolled;
+                        // now every hand is rolled after the round has entered DICE_ROLLING
+                        if (state.getRoundStatus() == GameStage.BANK_THROW) {
+                            state.setRoundStatus(GameStage.PLAYERS_THROW);
+                        }
+                    }
+                    case TURN_PASSED -> {
+                        if (data.get("currentTurn") instanceof Number n) {
+                            state.setCurrentTurn(n.intValue());
+                        }
                     }
                     case PLAYER_ROLLED -> {
                         if (event.getActorId() != null) {
@@ -294,7 +301,7 @@ public class EventServiceImpl implements EventService {
                         }
                     }
                     case ROUND_COMPLETED -> {
-                        state.setRoundStatus("COMPLETED");
+                        state.setRoundStatus(GameStage.COMPLETED);
                     }
                     case PLAYER_READY -> {
                         if (event.getActorId() != null) {
@@ -305,26 +312,22 @@ public class EventServiceImpl implements EventService {
                     case GAME_ADVANCED -> {
                         Object target = data.get("targetStage");
                         if (target instanceof String s) {
-                            state.setRoundStatus(s);
+                            GameStage stage = GameStage.valueOf(s);
+                            state.setRoundStatus(stage);
                             state.setStatusSetTime(null);
+                            if (stage == GameStage.DICE_ROLLING) {
+                                state.setCurrentTurn(0);
+                            }
                             Object houseId = data.get("housePlayerId");
                             if (houseId instanceof String hid) {
                                 state.setHousePlayerId(UUID.fromString(hid));
                             }
                             List<UUID> order = parseUuidList(data.get("playerOrder"));
                             if (!order.isEmpty()) {
-                                state.setTurnOrder(order);
-                                if ("ENOUGH_PLAYERS".equals(s)) {
-                                    state.getLeftPlayers().clear();
-                                    state.getWaitingPlayers().clear();
-                                    state.getWaitingPlayers().addAll(order);
-                                    state.getReadyPlayers().clear();
-                                    state.getBets().clear();
-                                    state.getPlayerRolls().clear();
-                                    state.getRolledPlayers().clear();
-                                    state.setHouseDice(new ArrayList<>());
-                                    state.setBetLimit(null);
-                                    state.setCurrentTurn(0);
+                                if (stage == GameStage.ENOUGH_PLAYERS) {
+                                    state.enterNextLobby(order, state.getHousePlayerId());
+                                } else {
+                                    state.setTurnOrder(order);
                                 }
                             }
                         }

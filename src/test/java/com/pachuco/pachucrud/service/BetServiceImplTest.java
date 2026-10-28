@@ -1,6 +1,7 @@
 package com.pachuco.pachucrud.service;
 
 import com.pachuco.pachucrud.model.EventType;
+import com.pachuco.pachucrud.model.GameStage;
 import com.pachuco.pachucrud.model.ThrowModel;
 import com.pachuco.pachucrud.model.TransactionType;
 import com.pachuco.pachucrud.service.impl.BetServiceImpl;
@@ -45,7 +46,7 @@ class BetServiceImplTest {
         alice = UUID.randomUUID();
     }
 
-    private GameState state(String roundStatus) {
+    private GameState state(GameStage roundStatus) {
         GameState state = new GameState();
         state.setGameId(gameId);
         state.setRoundStatus(roundStatus);
@@ -57,7 +58,7 @@ class BetServiceImplTest {
 
     @Test
     void placeBet_rejectsWhenBalanceCannotCoverDoubleLoss() {
-        when(redisService.getGameState(gameId)).thenReturn(Optional.of(state("PLAYERS_BET_SETTING")));
+        when(redisService.getGameState(gameId)).thenReturn(Optional.of(state(GameStage.PLAYERS_BET_SETTING)));
         when(redisService.getBalance(alice)).thenReturn(Optional.of(BigDecimal.valueOf(15)));
 
         assertThrows(IllegalStateException.class,
@@ -67,7 +68,7 @@ class BetServiceImplTest {
 
     @Test
     void placeBet_acceptsWhenBalanceCoversDoubleLoss() {
-        GameState state = state("PLAYERS_BET_SETTING");
+        GameState state = state(GameStage.PLAYERS_BET_SETTING);
         when(redisService.getGameState(gameId)).thenReturn(Optional.of(state));
         when(redisService.getBalance(alice)).thenReturn(Optional.of(BigDecimal.valueOf(20)));
 
@@ -79,7 +80,7 @@ class BetServiceImplTest {
 
     @Test
     void settleBet_recordsSignedNetOnRoll() {
-        GameState state = state("PLAYERS_BET_SETTING");
+        GameState state = state(GameStage.PLAYERS_BET_SETTING);
         state.getBets().add(new GameState.BetInfo(alice, BigDecimal.TEN));
 
         // player pachuco vs house pair -> lose_double
@@ -98,7 +99,7 @@ class BetServiceImplTest {
 
     @Test
     void settleBet_leavesSavingTheStateToTheCaller() {
-        GameState state = state("PLAYERS_BET_SETTING");
+        GameState state = state(GameStage.PLAYERS_BET_SETTING);
         state.getBets().add(new GameState.BetInfo(alice, BigDecimal.TEN));
 
         betService.settleBet_New(state, alice,
@@ -111,7 +112,7 @@ class BetServiceImplTest {
 
     @Test
     void settleBet_rejectsPlayerWithoutABet() {
-        GameState state = state("PLAYERS_BET_SETTING");
+        GameState state = state(GameStage.PLAYERS_BET_SETTING);
 
         assertThrows(IllegalStateException.class, () -> betService.settleBet_New(state, alice,
             new ThrowModel(new Integer[] {1, 1, 2, 3, 4}),

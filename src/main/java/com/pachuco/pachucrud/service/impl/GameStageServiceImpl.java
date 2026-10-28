@@ -2,6 +2,7 @@ package com.pachuco.pachucrud.service.impl;
 
 import com.pachuco.pachucrud.exception.NotFoundException;
 import com.pachuco.pachucrud.model.EventType;
+import com.pachuco.pachucrud.model.GameStage;
 import com.pachuco.pachucrud.model.GameStatus;
 import com.pachuco.pachucrud.repository.GameRepository;
 import com.pachuco.pachucrud.repository.entity.GameEntity;
@@ -51,15 +52,15 @@ public class GameStageServiceImpl implements GameStageService {
         GameState state = redisService.getGameState(gameId)
             .orElseThrow(() -> new NotFoundException("Game state not found"));
 
-        if (!"INIT".equals(state.getRoundStatus()) && state.getRoundStatus() != null) {
-            throw new IllegalStateException("Game is not in INIT stage");
+        if (state.getRoundStatus() != GameStage.INIT && state.getRoundStatus() != null) {
+            throw new IllegalStateException("Game is not in " + GameStage.INIT + " stage");
         }
 
         Map<String, Object> data = new HashMap<>();
-        data.put("targetStage", "ENOUGH_PLAYERS");
+        data.put("targetStage", GameStage.ENOUGH_PLAYERS.name());
         eventService.writeEvent(gameId, EventType.GAME_ADVANCED, null, data);
 
-        state.setRoundStatus("ENOUGH_PLAYERS");
+        state.setRoundStatus(GameStage.ENOUGH_PLAYERS);
         state.setStatusSetTime(Instant.now());
         redisService.setGameState(gameId, state);
 
@@ -72,23 +73,21 @@ public class GameStageServiceImpl implements GameStageService {
         GameState state = redisService.getGameState(gameId)
             .orElseThrow(() -> new NotFoundException("Game state not found"));
 
-        if (!"ENOUGH_PLAYERS".equals(state.getRoundStatus())) {
-            throw new IllegalStateException("Game is not in ENOUGH_PLAYERS stage");
+        if (state.getRoundStatus() != GameStage.ENOUGH_PLAYERS) {
+            throw new IllegalStateException("Game is not in " + GameStage.ENOUGH_PLAYERS + " stage");
         }
 
-        if (playerOrder == null || playerOrder.size() < 2) {
+        // the first round's order is the shuffled Ready Players; after that the Rotation is rebuilt here
+        List<UUID> rotation = state.getTurnOrder().isEmpty()
+            ? (playerOrder == null ? List.of() : playerOrder)
+            : state.rotationOfReadyPlayers();
+        if (rotation.size() < 2) {
             throw new IllegalStateException("Need at least 2 players in the rotation");
         }
+        state.setTurnOrder(new ArrayList<>(rotation));
 
-        List<UUID> mergedOrder = new ArrayList<>(playerOrder);
-        for (UUID playerId : state.getTurnOrder()) {
-            if (!mergedOrder.contains(playerId)) {
-                mergedOrder.add(playerId);
-            }
-        }
-        state.setTurnOrder(mergedOrder);
-
-        UUID housePlayerId = playerOrder.get(0);
+        // seat 0 is the House's, so a House that isn't ready passes it to the next Ready Player
+        UUID housePlayerId = rotation.get(0);
         state.setHousePlayerId(housePlayerId);
 
         GameEntity game = gameRepository.findById(gameId)
@@ -101,12 +100,12 @@ public class GameStageServiceImpl implements GameStageService {
         }
 
         Map<String, Object> data = new HashMap<>();
-        data.put("targetStage", "GAME_START");
+        data.put("targetStage", GameStage.GAME_START.name());
         data.put("housePlayerId", housePlayerId.toString());
-        data.put("playerOrder", mergedOrder.stream().map(UUID::toString).toList());
+        data.put("playerOrder", rotation.stream().map(UUID::toString).toList());
         eventService.writeEvent(gameId, EventType.GAME_ADVANCED, null, data);
 
-        state.setRoundStatus("GAME_START");
+        state.setRoundStatus(GameStage.GAME_START);
         state.setStatusSetTime(Instant.now());
         redisService.setGameState(gameId, state);
 
@@ -119,15 +118,15 @@ public class GameStageServiceImpl implements GameStageService {
         GameState state = redisService.getGameState(gameId)
             .orElseThrow(() -> new NotFoundException("Game state not found"));
 
-        if (!"BET_SETTING".equals(state.getRoundStatus())) {
-            throw new IllegalStateException("Game is not in BET_SETTING stage");
+        if (state.getRoundStatus() != GameStage.BET_SETTING) {
+            throw new IllegalStateException("Game is not in " + GameStage.BET_SETTING + " stage");
         }
 
         Map<String, Object> data = new HashMap<>();
-        data.put("targetStage", "PLAYERS_BET_SETTING");
+        data.put("targetStage", GameStage.PLAYERS_BET_SETTING.name());
         eventService.writeEvent(gameId, EventType.GAME_ADVANCED, null, data);
 
-        state.setRoundStatus("PLAYERS_BET_SETTING");
+        state.setRoundStatus(GameStage.PLAYERS_BET_SETTING);
         state.setStatusSetTime(Instant.now());
         redisService.setGameState(gameId, state);
 
@@ -140,79 +139,53 @@ public class GameStageServiceImpl implements GameStageService {
         GameState state = redisService.getGameState(gameId)
             .orElseThrow(() -> new NotFoundException("Game state not found"));
 
-        if (!"PLAYERS_BET_SETTING".equals(state.getRoundStatus())) {
-            throw new IllegalStateException("Game is not in PLAYERS_BET_SETTING stage");
+        if (state.getRoundStatus() != GameStage.PLAYERS_BET_SETTING) {
+            throw new IllegalStateException("Game is not in " + GameStage.PLAYERS_BET_SETTING + " stage");
         }
 
         Map<String, Object> data = new HashMap<>();
-        data.put("targetStage", "DICE_ROLLING");
+        data.put("targetStage", GameStage.DICE_ROLLING.name());
         eventService.writeEvent(gameId, EventType.GAME_ADVANCED, null, data);
 
         GameState updatedGame = rollService.rollGamePlayers(gameId, state);
-        updatedGame.setRoundStatus("DICE_ROLLING");
+        updatedGame.setRoundStatus(GameStage.DICE_ROLLING);
         updatedGame.setStatusSetTime(Instant.now());
+        // the House, at seat 0, Rolls first
+        updatedGame.setCurrentTurn(0);
         redisService.setGameState(gameId, updatedGame);
 
         return updatedGame;
     }
 
+    /**
+     * Every hand was rolled when betting closed, so a Roll only passes the turn to the
+     * next seat with a hand, which shows the roller's hand to the table.
+     */
     @Override
     @Transactional
-    public GameState advanceToBankThrow(UUID gameId) {
+    public GameState passTurn(UUID gameId, UUID playerId) {
         GameState state = redisService.getGameState(gameId)
             .orElseThrow(() -> new NotFoundException("Game state not found"));
 
-        if (!"PLAYERS_BET_SETTING".equals(state.getRoundStatus())) {
-            throw new IllegalStateException("Game is not in PLAYERS_BET_SETTING stage");
+        if (state.getRoundStatus() != GameStage.DICE_ROLLING) {
+            throw new IllegalStateException("Game is not in " + GameStage.DICE_ROLLING + " stage");
         }
 
+        int turn = state.getCurrentTurn();
+        List<UUID> order = state.getTurnOrder();
+        if (turn >= order.size() || !order.get(turn).equals(playerId)) {
+            throw new IllegalStateException("It is not player " + playerId + "'s turn");
+        }
+
+        int next = state.nextSeatWithHand(turn + 1);
         Map<String, Object> data = new HashMap<>();
-        data.put("targetStage", "BANK_THROW");
-        eventService.writeEvent(gameId, EventType.GAME_ADVANCED, null, data);
+        data.put("currentTurn", next);
+        eventService.writeEvent(gameId, EventType.TURN_PASSED, playerId, data);
 
-        state.setRoundStatus("BANK_THROW");
-        state.setStatusSetTime(Instant.now());
+        state.setCurrentTurn(next);
         redisService.setGameState(gameId, state);
 
         return state;
-    }
-
-    @Override
-    @Transactional
-    public GameState advanceToPlayersThrow(UUID gameId) {
-        GameState state = redisService.getGameState(gameId)
-            .orElseThrow(() -> new NotFoundException("Game state not found"));
-
-        if (!"BANK_THROW".equals(state.getRoundStatus())) {
-            throw new IllegalStateException("Game is not in BANK_THROW stage");
-        }
-
-        if (state.getHouseDice().isEmpty()) {
-            throw new IllegalStateException("House must roll before advancing to players throw");
-        }
-
-        state.setCurrentTurn(findFirstBettorInState(state));
-        state.setRoundStatus("PLAYERS_THROW");
-        state.setStatusSetTime(Instant.now());
-        redisService.setGameState(gameId, state);
-
-        return state;
-    }
-
-    private int findFirstBettorInState(GameState state) {
-        java.util.List<UUID> order = state.getTurnOrder();
-        for (int i = 1; i < order.size(); i++) {
-            UUID player = order.get(i);
-            if (player.equals(state.getHousePlayerId())) {
-                continue;
-            }
-            boolean hasBet = state.getBets().stream()
-                .anyMatch(b -> b.getPlayerId().equals(player));
-            if (hasBet) {
-                return i;
-            }
-        }
-        return order.size();
     }
 
     @Override
@@ -221,15 +194,15 @@ public class GameStageServiceImpl implements GameStageService {
         GameState state = redisService.getGameState(gameId)
             .orElseThrow(() -> new NotFoundException("Game state not found"));
 
-        if (!"DICE_ROLLING".equals(state.getRoundStatus())) {
-            throw new IllegalStateException("Game is not in PLAYERS_THROW stage");
+        if (state.getRoundStatus() != GameStage.DICE_ROLLING) {
+            throw new IllegalStateException("Game is not in " + GameStage.DICE_ROLLING + " stage");
         }
 
         Map<String, Object> data = new HashMap<>();
-        data.put("targetStage", "COMPLETED");
+        data.put("targetStage", GameStage.COMPLETED.name());
         eventService.writeEvent(gameId, EventType.GAME_ADVANCED, null, data);
 
-        state.setRoundStatus("COMPLETED");
+        state.setRoundStatus(GameStage.COMPLETED);
         state.setStatusSetTime(Instant.now());
         redisService.setGameState(gameId, state);
 
@@ -242,7 +215,7 @@ public class GameStageServiceImpl implements GameStageService {
         GameState state = redisService.getGameState(gameId)
             .orElseThrow(() -> new NotFoundException("Game state not found"));
 
-        if (!"COMPLETED".equals(state.getRoundStatus())) {
+        if (state.getRoundStatus() != GameStage.COMPLETED) {
             throw new IllegalStateException("Round is not completed");
         }
 
@@ -273,26 +246,13 @@ public class GameStageServiceImpl implements GameStageService {
             }
         }
 
-        state.setHousePlayerId(newHouse);
-        state.setTurnOrder(order);
-
         Map<String, Object> data = new HashMap<>();
-        data.put("targetStage", "ENOUGH_PLAYERS");
+        data.put("targetStage", GameStage.ENOUGH_PLAYERS.name());
         data.put("housePlayerId", newHouse != null ? newHouse.toString() : null);
         data.put("playerOrder", order.stream().map(UUID::toString).toList());
         eventService.writeEvent(gameId, EventType.GAME_ADVANCED, null, data);
 
-        state.getLeftPlayers().clear();
-        state.getBets().clear();
-        state.getPlayerRolls().clear();
-        state.getRolledPlayers().clear();
-        state.setHouseDice(new ArrayList<>());
-        state.setBetLimit(null);
-        state.setCurrentTurn(0);
-        state.getWaitingPlayers().clear();
-        state.getWaitingPlayers().addAll(order);
-        state.getReadyPlayers().clear();
-        state.setRoundStatus("ENOUGH_PLAYERS");
+        state.enterNextLobby(order, newHouse);
         state.setStatusSetTime(Instant.now());
         redisService.setGameState(gameId, state);
 
@@ -305,8 +265,8 @@ public class GameStageServiceImpl implements GameStageService {
         GameState state = redisService.getGameState(gameId)
             .orElseThrow(() -> new NotFoundException("Game state not found"));
 
-        if (!"ENOUGH_PLAYERS".equals(state.getRoundStatus())) {
-            throw new IllegalStateException("Game is not in ENOUGH_PLAYERS stage");
+        if (state.getRoundStatus() != GameStage.ENOUGH_PLAYERS) {
+            throw new IllegalStateException("Game is not in " + GameStage.ENOUGH_PLAYERS + " stage");
         }
 
         if (state.getReadyPlayers().contains(playerId)) {
@@ -342,7 +302,7 @@ public class GameStageServiceImpl implements GameStageService {
         GameState state = redisService.getGameState(gameId)
             .orElseThrow(() -> new NotFoundException("Game state not found"));
 
-        if (!"INIT".equals(state.getRoundStatus()) && !"ENOUGH_PLAYERS".equals(state.getRoundStatus())) {
+        if (state.getRoundStatus() != GameStage.INIT && state.getRoundStatus() != GameStage.ENOUGH_PLAYERS) {
             throw new IllegalStateException("Game is not in the Lobby");
         }
 

@@ -1,6 +1,7 @@
 package com.pachuco.pachucrud.service.impl;
 
 import com.pachuco.pachucrud.model.EventType;
+import com.pachuco.pachucrud.model.GameStage;
 import com.pachuco.pachucrud.model.ThrowModel;
 import com.pachuco.pachucrud.service.BetService;
 import com.pachuco.pachucrud.service.EventService;
@@ -53,7 +54,7 @@ public class RollServiceImpl implements RollService {
     @Override
     @Transactional
     public GameState rollGamePlayers(UUID gameId, GameState initialState) {
-        if (!"PLAYERS_BET_SETTING".equals(initialState.getRoundStatus())) {
+        if (initialState.getRoundStatus() != GameStage.PLAYERS_BET_SETTING) {
             throw new IllegalStateException("Round is not ready for player rolls");
         }
 

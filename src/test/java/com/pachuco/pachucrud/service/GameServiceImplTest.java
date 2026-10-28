@@ -1,5 +1,6 @@
 package com.pachuco.pachucrud.service;
 
+import com.pachuco.pachucrud.model.GameStage;
 import com.pachuco.pachucrud.model.GameStatus;
 import com.pachuco.pachucrud.repository.EventRepository;
 import com.pachuco.pachucrud.repository.GameRepository;
@@ -65,7 +66,7 @@ class GameServiceImplTest {
         GameState state = new GameState();
         state.setGameId(gameId);
         state.setStatus("ACTIVE");
-        state.setRoundStatus("PLAYERS_THROW");
+        state.setRoundStatus(GameStage.PLAYERS_THROW);
         state.setTurnOrder(new ArrayList<>(List.of(house, alice, bob)));
         state.setHousePlayerId(house);
         return state;
@@ -98,7 +99,7 @@ class GameServiceImplTest {
     }
 
     @Test
-    void joinGame_appendsToTurnOrderInJoinOrderWhenGameStarted() {
+    void joinGame_keepsAMidRoundJoinerOutOfTheRotation() {
         GameState state = activeState();
         when(gameRepository.findById(gameId)).thenReturn(Optional.of(gameWithStatus(GameStatus.ACTIVE)));
         when(userRepository.findById(dave)).thenReturn(Optional.of(new UserEntity()));
@@ -106,7 +107,7 @@ class GameServiceImplTest {
 
         gameService.joinGame(gameId, dave);
 
-        assertEquals(List.of(house, alice, bob, dave), state.getTurnOrder());
+        assertEquals(List.of(house, alice, bob), state.getTurnOrder());
         assertTrue(state.getWaitingPlayers().contains(dave));
     }
 
@@ -115,7 +116,7 @@ class GameServiceImplTest {
         GameState state = new GameState();
         state.setGameId(gameId);
         state.setStatus("PENDING");
-        state.setRoundStatus("INIT");
+        state.setRoundStatus(GameStage.INIT);
         state.setTurnOrder(new ArrayList<>());
         state.getWaitingPlayers().add(house);
         when(gameRepository.findById(gameId)).thenReturn(Optional.of(gameWithStatus(GameStatus.PENDING)));

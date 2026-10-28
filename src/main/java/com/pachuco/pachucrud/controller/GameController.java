@@ -72,7 +72,7 @@ public class GameController extends GameServiceGrpc.GameServiceImplBase {
             builder.addGames(Games.GameMessage.newBuilder()
                 .setId(g.getId().toString())
                 .setStatus(state.get().getStatus())
-                .setRoundStatus(state.get().getRoundStatus())
+                .setRoundStatus(state.get().getRoundStatus().name())
                 .setBetLimit(betLimit.intValue())
                 .setTotalPlayers(totalPlayers)
                 .addAllTurnOrder(state.get().getTurnOrder().stream().map(UUID::toString).toList())
@@ -175,21 +175,13 @@ public class GameController extends GameServiceGrpc.GameServiceImplBase {
     }
 
     @Override
-    public void advanceToBankThrow(Games.GameIdRequest request,
-                                   StreamObserver<Games.GameResponse> responseObserver) {
+    public void passTurn(Games.PassTurnRequest request,
+                         StreamObserver<Games.GameResponse> responseObserver) {
         UUID gameId = UUID.fromString(request.getGameId());
-        GameState state = gameStageService.advanceToBankThrow(gameId);
+        UUID playerId = UUID.fromString(request.getPlayerId());
+        GameState state = gameStageService.passTurn(gameId, playerId);
 
-        respondOk(responseObserver, Optional.of(state), "ADVANCED_TO_BANK_THROW");
-    }
-
-    @Override
-    public void advanceToPlayersThrow(Games.GameIdRequest request,
-                                       StreamObserver<Games.GameResponse> responseObserver) {
-        UUID gameId = UUID.fromString(request.getGameId());
-        GameState state = gameStageService.advanceToPlayersThrow(gameId);
-
-        respondOk(responseObserver, Optional.of(state), "ADVANCED_TO_PLAYERS_THROW");
+        respondOk(responseObserver, Optional.of(state), "TURN_PASSED");
     }
 
     @Override
@@ -221,7 +213,7 @@ public class GameController extends GameServiceGrpc.GameServiceImplBase {
             .setGameId(state.getGameId().toString())
             .setStatus(state.getStatus())
             .setCurrentRound(state.getCurrentRound())
-            .setRoundStatus(state.getRoundStatus())
+            .setRoundStatus(state.getRoundStatus().name())
             .setHousePlayerId(
                 state.getHousePlayerId() != null ? state.getHousePlayerId().toString() : "")
             .setBetLimit(

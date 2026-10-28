@@ -49,7 +49,7 @@ class SchemaMigrationTest {
     void freshDatabaseMigratesAndValidates() {
         Integer applied = jdbc.queryForObject(
             "SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class);
-        assertEquals(6, applied);
+        assertEquals(7, applied);
     }
 
     @Test

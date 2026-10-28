@@ -2,6 +2,7 @@ package com.pachuco.pachucrud.service.impl;
 
 import com.pachuco.pachucrud.exception.NotFoundException;
 import com.pachuco.pachucrud.model.EventType;
+import com.pachuco.pachucrud.model.GameStage;
 import com.pachuco.pachucrud.model.GameStatus;
 import com.pachuco.pachucrud.repository.EventRepository;
 import com.pachuco.pachucrud.repository.GameRepository;
@@ -82,7 +83,7 @@ public class GameServiceImpl implements GameService {
         GameState state = new GameState();
         state.setGameId(game.getId());
         state.setStatus("PENDING");
-        state.setRoundStatus("INIT");
+        state.setRoundStatus(GameStage.INIT);
         state.setCurrentRound(0);
         state.setTurnOrder(new ArrayList<>());
         state.setMaxPlayers(maxPlayers);
@@ -118,20 +119,15 @@ public class GameServiceImpl implements GameService {
             throw new IllegalStateException("User already in this game");
         }
 
-        int currentPlayers = state.getTurnOrder().isEmpty()
-            ? state.getWaitingPlayers().size() + state.getReadyPlayers().size()
-            : state.getTurnOrder().size();
-        if (currentPlayers >= maxPlayers) {
+        if (state.seatedPlayerCount() >= maxPlayers) {
             throw new IllegalStateException("Game is full (max " + maxPlayers + " players)");
         }
 
         Map<String, Object> data = new HashMap<>();
         eventService.writeEvent(gameId, EventType.PLAYER_JOINED, userId, data);
 
+        // a player who joins during a round sits it out: they enter the Rotation from the next Lobby
         state.getWaitingPlayers().add(userId);
-        if (!state.getTurnOrder().isEmpty()) {
-            state.getTurnOrder().add(userId);
-        }
         redisService.setGameState(gameId, state);
     }
 
@@ -147,7 +143,7 @@ public class GameServiceImpl implements GameService {
                 return redisService.getGameState(gameId).orElseThrow();
             });
 
-        if (!"GAME_START".equals(state.getRoundStatus())) {
+        if (state.getRoundStatus() != GameStage.GAME_START) {
             throw new IllegalStateException("Round is not in GAME_START stage");
         }
 
@@ -186,7 +182,7 @@ public class GameServiceImpl implements GameService {
         eventService.writeEvent(gameId, EventType.ROUND_STARTED, housePlayerId, data);
 
         state.setCurrentRound(state.getCurrentRound() + 1);
-        state.setRoundStatus("BET_SETTING");
+        state.setRoundStatus(GameStage.BET_SETTING);
         state.setHousePlayerId(housePlayerId);
         state.setBetLimit(betLimit);
         state.setHouseDice(new ArrayList<>());
