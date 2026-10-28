@@ -118,13 +118,8 @@ public class GameState {
      */
     public void enterNextLobby(List<UUID> rotation, UUID house) {
         List<UUID> joined = new ArrayList<>(rotation);
-        for (List<UUID> seated : List.of(waitingPlayers, readyPlayers)) {
-            for (UUID player : seated) {
-                if (!joined.contains(player)) {
-                    joined.add(player);
-                }
-            }
-        }
+        appendMissing(joined, waitingPlayers);
+        appendMissing(joined, readyPlayers);
         turnOrder = new ArrayList<>(rotation);
         housePlayerId = house;
         leftPlayers.clear();
@@ -146,21 +141,38 @@ public class GameState {
     public List<UUID> rotationOfReadyPlayers() {
         List<UUID> rotation = new ArrayList<>(turnOrder);
         rotation.retainAll(readyPlayers);
-        for (UUID player : readyPlayers) {
-            if (!rotation.contains(player)) {
-                rotation.add(player);
-            }
-        }
+        appendMissing(rotation, readyPlayers);
         return rotation;
     }
 
-    /** Everyone holding a seat, in the Rotation or Joined, counted once; players who have left are not. */
+    /** Adds each of {@code players} not already in {@code order} to its end, keeping their order. */
+    private static void appendMissing(List<UUID> order, List<UUID> players) {
+        for (UUID player : players) {
+            if (!order.contains(player)) {
+                order.add(player);
+            }
+        }
+    }
+
+    /**
+     * Holds a seat, Joined or in the Rotation. A player who has left loses their place in the
+     * Rotation, but one who comes back holds a seat again as a Joined Player.
+     */
+    public boolean isSeated(UUID player) {
+        return seatedPlayers().contains(player);
+    }
+
+    /** Everyone holding a seat, in the Rotation or Joined, counted once. */
     public int seatedPlayerCount() {
+        return seatedPlayers().size();
+    }
+
+    private Set<UUID> seatedPlayers() {
         Set<UUID> seated = new HashSet<>(turnOrder);
+        seated.removeAll(leftPlayers);
         seated.addAll(waitingPlayers);
         seated.addAll(readyPlayers);
-        seated.removeAll(leftPlayers);
-        return seated.size();
+        return seated;
     }
 
     /** Every player who bet has rolled or forfeited. */

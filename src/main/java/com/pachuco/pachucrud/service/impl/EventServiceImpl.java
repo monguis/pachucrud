@@ -318,17 +318,18 @@ public class EventServiceImpl implements EventService {
                             if (stage == GameStage.DICE_ROLLING) {
                                 state.setCurrentTurn(0);
                             }
-                            Object houseId = data.get("housePlayerId");
-                            if (houseId instanceof String hid) {
-                                state.setHousePlayerId(UUID.fromString(hid));
+                            UUID house = data.get("housePlayerId") instanceof String hid
+                                ? UUID.fromString(hid) : null;
+                            if (house != null) {
+                                state.setHousePlayerId(house);
                             }
                             List<UUID> order = parseUuidList(data.get("playerOrder"));
-                            if (!order.isEmpty()) {
-                                if (stage == GameStage.ENOUGH_PLAYERS) {
-                                    state.enterNextLobby(order, state.getHousePlayerId());
-                                } else {
-                                    state.setTurnOrder(order);
-                                }
+                            // a round's end carries its next Rotation, even an empty one; the
+                            // first Lobby's advance carries none
+                            if (stage == GameStage.ENOUGH_PLAYERS && data.containsKey("playerOrder")) {
+                                state.enterNextLobby(order, house);
+                            } else if (!order.isEmpty()) {
+                                state.setTurnOrder(order);
                             }
                         }
                     }

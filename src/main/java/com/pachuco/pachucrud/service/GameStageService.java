@@ -12,6 +12,8 @@ public interface GameStageService {
     GameState passTurn(UUID gameId, UUID playerId);
     GameState advanceToRoundCompleted(UUID gameId);
     GameState advanceToNextRound(UUID gameId);
+    /** Records the round's end and opens the next Lobby with the given Rotation and House. */
+    GameState openNextLobby(UUID gameId, GameState state, List<UUID> rotation, UUID house);
     GameState markPlayerReady(UUID gameId, UUID playerId);
     GameState getCurrentTurn(UUID gameId);
     GameState failLobby(UUID gameId);

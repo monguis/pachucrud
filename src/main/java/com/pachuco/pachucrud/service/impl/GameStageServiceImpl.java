@@ -246,13 +246,18 @@ public class GameStageServiceImpl implements GameStageService {
             }
         }
 
+        return openNextLobby(gameId, state, order, newHouse);
+    }
+
+    @Override
+    public GameState openNextLobby(UUID gameId, GameState state, List<UUID> rotation, UUID house) {
         Map<String, Object> data = new HashMap<>();
         data.put("targetStage", GameStage.ENOUGH_PLAYERS.name());
-        data.put("housePlayerId", newHouse != null ? newHouse.toString() : null);
-        data.put("playerOrder", order.stream().map(UUID::toString).toList());
+        data.put("housePlayerId", house != null ? house.toString() : null);
+        data.put("playerOrder", rotation.stream().map(UUID::toString).toList());
         eventService.writeEvent(gameId, EventType.GAME_ADVANCED, null, data);
 
-        state.enterNextLobby(order, newHouse);
+        state.enterNextLobby(rotation, house);
         state.setStatusSetTime(Instant.now());
         redisService.setGameState(gameId, state);
 

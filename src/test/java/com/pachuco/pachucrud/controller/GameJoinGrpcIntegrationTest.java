@@ -246,6 +246,91 @@ class GameJoinGrpcIntegrationTest {
         assertTrue(state(game).getBetsList().isEmpty());
     }
 
+    @Test
+    void playersWhoReconnectInTheLobbyKeepTheirPlace() {
+        String house = player(1000);
+        String alice = player(100);
+        String game = createGame(house, alice);
+        games.advanceToEnoughPlayers(gameId(game));
+        markReady(game, alice);
+
+        join(game, alice);
+        join(game, house);
+
+        Games.GameStateResponse lobby = state(game);
+        assertEquals(List.of(alice), lobby.getReadyPlayersList());
+        assertEquals(List.of(house), lobby.getWaitingPlayersList());
+        redisService.deleteGameState(UUID.fromString(game));
+        Games.GameStateResponse rebuilt = state(game);
+        assertEquals(List.of(alice), rebuilt.getReadyPlayersList());
+        assertEquals(List.of(house), rebuilt.getWaitingPlayersList());
+    }
+
+    @Test
+    void seatedPlayersWhoReconnectDuringTheRoundChangeNothing() {
+        String house = player(1000);
+        String alice = player(100);
+        String bob = player(100);
+        String game = gameAtBetting(house, alice, bob);
+        String carol = player(100);
+        join(game, carol);
+        Games.GameStateResponse before = state(game);
+
+        join(game, alice);
+        join(game, carol);
+
+        assertEquals(before, state(game));
+        redisService.deleteGameState(UUID.fromString(game));
+        assertEquals(before.getTurnOrderList(), state(game).getTurnOrderList());
+        assertEquals(before.getWaitingPlayersList(), state(game).getWaitingPlayersList());
+    }
+
+    @Test
+    void aRoundThatEndsWithAnEmptyRotationRebuildsToTheSameLobby() {
+        String house = player(1000);
+        String alice = player(100);
+        String game = gameAtBetting(house, alice);
+        bet(game, alice, 10);
+        rollRound(game);
+        leave(game, alice);
+        leave(game, house);
+        games.advanceToNextRound(gameId(game));
+        Games.GameStateResponse live = state(game);
+
+        redisService.deleteGameState(UUID.fromString(game));
+
+        Games.GameStateResponse rebuilt = state(game);
+        assertTrue(live.getTurnOrderList().isEmpty());
+        assertEquals(live.getRoundStatus(), rebuilt.getRoundStatus());
+        assertEquals(live.getHousePlayerId(), rebuilt.getHousePlayerId());
+        assertEquals(live.getWaitingPlayersList(), rebuilt.getWaitingPlayersList());
+        assertEquals(live.getBetsList(), rebuilt.getBetsList());
+        assertEquals(live.getTurnOrderList(), rebuilt.getTurnOrderList());
+        assertEquals(live.getPlayerRollsList(), rebuilt.getPlayerRollsList());
+        assertEquals(live.getHouseDiceList(), rebuilt.getHouseDiceList());
+    }
+
+    @Test
+    void aHouseThatLeftAndComesBackRefreshesForFreeAndPlaysTheNextRoundAsANewcomer() {
+        String house = player(1000);
+        String alice = player(1000);
+        String game = gameAtBetting(house, alice);
+        bet(game, alice, 10);
+        rollRound(game);
+        leave(game, house);
+
+        join(game, house);
+        join(game, house);
+
+        assertEquals(List.of(house), state(game).getWaitingPlayersList());
+        games.advanceToNextRound(gameId(game));
+        Games.GameStateResponse lobby = state(game);
+        assertEquals(List.of(alice), lobby.getTurnOrderList());
+        assertEquals(List.of(alice, house), lobby.getWaitingPlayersList());
+        redisService.deleteGameState(UUID.fromString(game));
+        assertEquals(lobby.getWaitingPlayersList(), state(game).getWaitingPlayersList());
+    }
+
     // ---- harness ----
 
     /** The House sets the bet limit and betting opens. */

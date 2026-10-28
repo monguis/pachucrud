@@ -5,10 +5,10 @@ import com.pachuco.pachucrud.model.EventType;
 import com.pachuco.pachucrud.model.GameStage;
 import com.pachuco.pachucrud.service.BetService;
 import com.pachuco.pachucrud.service.EventService;
+import com.pachuco.pachucrud.service.GameStageService;
 import com.pachuco.pachucrud.service.LeaveService;
 import com.pachuco.pachucrud.service.RedisService;
 import com.pachuco.pachucrud.service.model.GameState;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -30,12 +30,14 @@ public class LeaveServiceImpl implements LeaveService {
     private final EventService eventService;
     private final RedisService redisService;
     private final BetService betService;
+    private final GameStageService gameStageService;
 
     public LeaveServiceImpl(EventService eventService, RedisService redisService,
-                            BetService betService) {
+                            BetService betService, GameStageService gameStageService) {
         this.eventService = eventService;
         this.redisService = redisService;
         this.betService = betService;
+        this.gameStageService = gameStageService;
     }
 
     @Override
@@ -44,7 +46,7 @@ public class LeaveServiceImpl implements LeaveService {
         GameState state = redisService.getGameState(gameId)
             .orElseThrow(() -> new NotFoundException("Game state not found"));
 
-        if (!isSeated(state, playerId)) {
+        if (!state.isSeated(playerId)) {
             return state;
         }
 
@@ -56,9 +58,9 @@ public class LeaveServiceImpl implements LeaveService {
             // the next player in the Rotation takes the House
             recordLeave(gameId, state, playerId, false);
             redisService.setGameState(gameId, state);
-            List<UUID> order = new ArrayList<>(state.getTurnOrder());
-            order.remove(playerId);
-            return abandonRound(gameId, order, order.isEmpty() ? null : order.get(0));
+            List<UUID> rotation = new ArrayList<>(state.getTurnOrder());
+            rotation.remove(playerId);
+            return abandonRound(gameId, rotation, rotation.isEmpty() ? null : rotation.get(0));
         }
         if (isHouse) {
             return houseLeavesAfterRolling(gameId, state, playerId);
@@ -104,7 +106,7 @@ public class LeaveServiceImpl implements LeaveService {
      * against: every Bet not yet settled is Released, and the next round's Lobby
      * starts with the given Rotation and House.
      */
-    private GameState abandonRound(UUID gameId, List<UUID> order, UUID newHouse) {
+    private GameState abandonRound(UUID gameId, List<UUID> rotation, UUID newHouse) {
         GameState state = redisService.getGameState(gameId).orElseThrow();
         for (UUID bettor : state.getBets().stream().map(GameState.BetInfo::getPlayerId).toList()) {
             betService.releaseBet(gameId, bettor);
@@ -116,17 +118,7 @@ public class LeaveServiceImpl implements LeaveService {
         abandoned.put("housePlayerId", state.getHousePlayerId().toString());
         eventService.writeEvent(gameId, EventType.ROUND_ABANDONED, null, abandoned);
 
-        Map<String, Object> advanced = new HashMap<>();
-        advanced.put("targetStage", GameStage.ENOUGH_PLAYERS.name());
-        advanced.put("housePlayerId", newHouse != null ? newHouse.toString() : null);
-        advanced.put("playerOrder", order.stream().map(UUID::toString).toList());
-        eventService.writeEvent(gameId, EventType.GAME_ADVANCED, null, advanced);
-
-        state.enterNextLobby(order, newHouse);
-        state.setStatusSetTime(Instant.now());
-        redisService.setGameState(gameId, state);
-
-        return state;
+        return gameStageService.openNextLobby(gameId, state, rotation, newHouse);
     }
 
     /**
@@ -171,14 +163,5 @@ public class LeaveServiceImpl implements LeaveService {
         if (seat < state.getCurrentTurn()) {
             state.setCurrentTurn(state.getCurrentTurn() - 1);
         }
-    }
-
-    private static boolean isSeated(GameState state, UUID playerId) {
-        if (state.getLeftPlayers().contains(playerId)) {
-            return false;
-        }
-        return state.getWaitingPlayers().contains(playerId)
-            || state.getReadyPlayers().contains(playerId)
-            || state.getTurnOrder().contains(playerId);
     }
 }

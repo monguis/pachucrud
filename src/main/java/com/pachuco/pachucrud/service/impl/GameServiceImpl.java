@@ -113,10 +113,9 @@ public class GameServiceImpl implements GameService {
                 return redisService.getGameState(gameId).orElseThrow();
             });
 
-        if (state.getWaitingPlayers().contains(userId)
-                || state.getReadyPlayers().contains(userId)
-                || state.getTurnOrder().contains(userId)) {
-            throw new IllegalStateException("User already in this game");
+        // a player reconnects by joining again, and a refresh costs nothing
+        if (state.isSeated(userId)) {
+            return;
         }
 
         if (state.seatedPlayerCount() >= maxPlayers) {

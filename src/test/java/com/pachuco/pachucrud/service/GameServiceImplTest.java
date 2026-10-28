@@ -23,7 +23,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -130,13 +133,16 @@ class GameServiceImplTest {
     }
 
     @Test
-    void joinGame_rejectsDuplicate() {
+    void joinGame_isANoOpForAPlayerAlreadySeated() {
         GameState state = activeState();
         when(gameRepository.findById(gameId)).thenReturn(Optional.of(gameWithStatus(GameStatus.ACTIVE)));
         when(userRepository.findById(alice)).thenReturn(Optional.of(new UserEntity()));
         when(redisService.getGameState(gameId)).thenReturn(Optional.of(state));
 
-        assertThrows(IllegalStateException.class, () -> gameService.joinGame(gameId, alice));
+        gameService.joinGame(gameId, alice);
+
+        verifyNoInteractions(eventService);
+        verify(redisService, never()).setGameState(any(), any());
     }
 
     @Test
