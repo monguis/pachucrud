@@ -1,6 +1,6 @@
 # Operations Runbook - Pachuco
 
-Only a local Docker setup exists (`pachuco-ci-cd/dev/docker-compose.yaml`). There are no health endpoints, admin endpoints, replicas or reconciliation jobs. Why things are shaped this way: [docs/database.md](docs/database.md) and its ADRs.
+Only a local Docker setup exists (`pachuco-ci-cd/dev/docker-compose.yaml`). pachucrud exposes a liveness probe, `GET http://localhost:3035/actuator/health/liveness`. It reports whether the app process is alive, not whether Postgres or Redis are reachable (`/actuator/health` checks those). There are no admin endpoints, replicas or reconciliation jobs. Why things are shaped this way: [docs/database.md](docs/database.md) and its ADRs.
 
 **The one rule:** Postgres `events` is the truth; Redis can always be thrown away ([ADR 0003](docs/adr/0003-redis-is-a-rebuildable-cache.md)). If only one can come back, it must be Postgres.
 
