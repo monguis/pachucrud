@@ -32,6 +32,14 @@ _Avoid_: Checked player, confirmed player
 The order in which players take their turns and in which the House passes from one player to the next. The first round's Ready Players are shuffled to set it, and it is never shuffled again. A round's Rotation holds only that round's Ready Players: a player who wasn't ready loses their place and goes back in at the end once ready again, and players who join after the first round also go in at the end. A House that isn't ready passes the House to the next Ready Player in the Rotation.
 _Avoid_: Turn order (in conversation), player order
 
+**Balance**:
+The money a player can still stake or withdraw. Money in a Hold is not part of it. A Balance never goes below zero, so a player can sit at several tables at once without being able to lose more than they have.
+_Avoid_: Wallet, funds, credit
+
+**Hold**:
+Money taken out of a Balance and set aside, before an outcome is known, to cover the most that outcome could cost. A Bet holds twice its stake, since a pachuco loses double; the House holds, when a round starts, the most it could pay out that round. Whatever the outcome doesn't cost comes back to the Balance when the Bet is settled or released, or when the round ends.
+_Avoid_: Reserve, lock, escrow
+
 **Full Table**:
 A table whose seats are all taken, counting every seated player, whether in the Rotation or Joined.
 _Avoid_: Max reached

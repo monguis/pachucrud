@@ -6,3 +6,4 @@ target
 .continue
 logs
 *.log
+.home
